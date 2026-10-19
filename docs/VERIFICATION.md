@@ -31,7 +31,7 @@ The premium static UI audit is not a clean pass: its scanner treated React Nativ
 
 ## Repository cleanup acceptance
 
-Current documentation is consolidated into six guides. Unused starter UI, duplicated schema, old packaging/video scripts and the legacy notebook were removed. Runtime protocols and ordered database migrations were retained. The source-only publish candidate passed Gitleaks and exact checks against the locally configured credentials. A clean source checkout, without private environment files or Expo-generated route types, passed the website build, mobile typecheck and 93 shared/mobile tests using the installed locked dependencies. Full Python/model tests add 47 passing tests, for 140 total. Firmware compilation passed. No APK or production deployment was triggered.
+Current documentation is consolidated into six guides. Unused starter UI, duplicated schema, old packaging/video scripts and the legacy notebook were removed. Runtime protocols and ordered database migrations were retained. The source-only publish candidate passed Gitleaks and exact checks against the locally configured credentials. A clean source checkout, without private environment files or Expo-generated route types, passed the website build, mobile typecheck and 93 shared/mobile tests using the installed locked dependencies. GitHub CI exposed inherited Expo compiler settings in the standalone website build; Vite now explicitly uses the website tsconfig. The failure was reproduced and the fix passed with mobile dependencies absent. Full Python/model tests add 47 passing tests, for 140 total. Firmware compilation passed. No APK or production deployment was triggered.
 
 ## Remaining acceptance
 
