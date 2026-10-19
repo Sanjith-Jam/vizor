@@ -1,0 +1,24 @@
+[Unit]
+Description=Vizor Banana Pi photo inference worker
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=helmet
+WorkingDirectory=/opt/vizor
+EnvironmentFile=/etc/vizor-photo.env
+Environment=PYTHONUNBUFFERED=1
+Environment=YOLO_CONFIG_DIR=/opt/vizor/.config/ultralytics
+ExecStart=/opt/vizor/.venv/bin/python /opt/vizor/vision-ai/photo_worker.py
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/vizor/.config
+MemoryMax=1500M
+
+[Install]
+WantedBy=multi-user.target

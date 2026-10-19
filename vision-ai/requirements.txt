@@ -1,0 +1,17 @@
+# Deep Learning & YOLO
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Edge Inference & Deployment
+opencv-python-headless>=4.8.0
+onnx>=1.14.0
+onnxruntime>=1.15.0
+onnxslim>=0.1.31
+pyserial>=3.5
+
+# Data handling & Metrics
+scikit-learn>=1.2.0
+numpy>=1.23.0
+pyyaml>=6.0
+matplotlib>=3.7.0

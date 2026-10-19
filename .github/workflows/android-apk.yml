@@ -1,0 +1,82 @@
+name: Android APK
+
+# Builds an installable Android APK of mobile-app/ on GitHub's own runners
+# (no Expo account / EAS needed) and attaches it to a GitHub Release, whose
+# download link never expires.
+#
+# Trigger it by pushing a tag like `app-v1.0.0`, or run it by hand from the
+# Actions tab. Tag builds publish a Release named after the tag; manual runs
+# only upload the APK as a workflow artifact.
+#
+# The APK is signed with the debug keystore that `expo prebuild` generates
+# from Expo's template (the same keystore every build), which is fine for
+# sideloading and lets each new APK install over the previous one. It is
+# NOT suitable for the Play Store -- that needs a real upload key.
+
+"on":
+  push:
+    tags: ["app-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Build APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-app
+    steps:
+      - uses: actions/checkout@v4
+      # The app's in-app updater (src/update/) compares its own version with
+      # the newest app-v* tag. A tag that doesn't match app.json's version
+      # would make every install think it's outdated forever, so refuse it.
+      - name: Check tag matches app.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          V=$(node -p "require('./app.json').expo.version")
+          if [ "$GITHUB_REF_NAME" != "app-v$V" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app.json version $V - bump expo.version (and android.versionCode) first."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: mobile-app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Run unit tests
+        run: npm test
+      # android/ is gitignored (Continuous Native Generation) -- generate it
+      # from app.json and its config plugins, same as EAS would.
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+      - name: Build release APK
+        working-directory: mobile-app/android
+        run: ./gradlew assembleRelease --no-daemon
+      - name: Rename APK
+        run: |
+          NAME="ar-helmet-nav-${GITHUB_REF_NAME//\//-}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$NAME"
+          echo "APK_NAME=$NAME" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: mobile-app/${{ env.APK_NAME }}
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$APK_NAME" \
+            --title "AR Helmet Nav $GITHUB_REF_NAME" \
+            --notes "Android APK of the companion app. Download it on your Android phone and open it to install (allow installs from your browser/files app if asked)."

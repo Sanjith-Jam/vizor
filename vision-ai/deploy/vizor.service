@@ -1,0 +1,24 @@
+[Unit]
+Description=Vizor pothole vision and single-owner MCU bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vizor
+SupplementaryGroups=dialout video
+WorkingDirectory=/opt/vizor
+EnvironmentFile=/etc/vizor.env
+Environment=YOLO_AUTOINSTALL=False
+ExecStart=/opt/vizor/.venv/bin/python /opt/vizor/vision-ai/bpi_inference.py --model /opt/vizor/models/pothole-640_ncnn_model --imgsz 640 --conf 0.30 --camera http://192.168.4.1:81/stream --serial-port /dev/ttyS1 --gps-mode at --headless --outbox /var/lib/vizor/outbox.sqlite3
+Restart=on-failure
+RestartSec=5
+StateDirectory=vizor
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vizor
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,10 @@
+{
+  "name": "vizor-software",
+  "private": true,
+  "scripts": {
+    "test": "node --experimental-strip-types --test shared/*.test.ts",
+    "website": "npm --prefix website run dev -- --host 0.0.0.0",
+    "check": "npm test && npm --prefix website run build && npm --prefix mobile-app test && npm --prefix mobile-app run typecheck"
+  },
+  "type": "module"
+}

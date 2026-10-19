@@ -1,0 +1,7 @@
+# CPU-only Torch/Torchvision must be installed for your aarch64 OS/Python first.
+ultralytics==8.3.228
+# Ultralytics requires this distribution; avoid installing two cv2 packages.
+opencv-python==4.12.0.88
+numpy==2.2.6
+pyserial==3.5
+ncnn==1.0.20260526

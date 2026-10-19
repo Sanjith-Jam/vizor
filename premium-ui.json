@@ -1,0 +1,4 @@
+{
+  "sourceRoots": ["website/src", "mobile-app/src"],
+  "ownership": { "Select/Listbox": "native" }
+}

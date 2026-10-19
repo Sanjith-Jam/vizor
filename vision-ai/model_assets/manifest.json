@@ -1,0 +1,8 @@
+{
+  "models": [
+    {"name":"rdd2022-yolov8n","repository":"dronefreak/rdd2022-yolov8n","revision":"acf216a43d796f7910fc854f662c1e9cfa03fc01","file":"best.pt","sha256":"d1c3536d8e4a873b7ff251d1cb81c0047100f06c86f92e08596de2d618618a3e","license":"AGPL-3.0"},
+    {"name":"rdd2022-yolov8s","repository":"dronefreak/rdd2022-yolov8s","revision":"06d1dbb6cb1b30f54a5f32f9fd9ee29695e1b106","file":"best.pt","sha256":"94945fc2d4fe22f6c846109030e90411d342fafd86e63c7ac0aa396e364dfc55","license":"AGPL-3.0"}
+  ],
+  "dataset":{"repository":"dronefreak/RDD2022","revision":"72b01f94c2e5bfe430861afd73995f2d412b8855","license":"CC-BY-SA-4.0","pothole_class":3},
+  "classes":["longitudinal_crack","transverse_crack","alligator_crack","pothole"]
+}

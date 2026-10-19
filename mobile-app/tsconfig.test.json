@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "outDir": "dist-test",
+    "rootDir": "src"
+  },
+  "include": [
+    "src/protocol/**/*.ts",
+    "src/ble/base64.ts",
+    "src/ble/base64.test.ts",
+    "src/sos/contactValidation.ts",
+    "src/sos/contactValidation.test.ts",
+    "src/sos/crashMessage.ts",
+    "src/sos/crashMessage.test.ts",
+    "src/ble/bleErrors.ts",
+    "src/ble/bleErrors.test.ts",
+    "src/settings/**/*.ts",
+    "src/nav/geo.ts",
+    "src/nav/geo.test.ts",
+    "src/nav/route.ts",
+    "src/nav/route.test.ts",
+    "src/history/**/*.ts",
+    "src/update/updateCheck.ts",
+    "src/update/updateCheck.test.ts",
+    "src/vision/**/*.ts",
+    "src/nav/rideCheckpoint.ts",
+    "src/nav/rideCheckpoint.test.ts",
+    "src/theme/**/*.ts"
+  ]
+}

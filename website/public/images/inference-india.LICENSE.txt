@@ -1,0 +1,9 @@
+inference-india.jpg is an annotated/resized RDD2022 road image.
+Authors: Deeksha Arya, Hiroya Maeda, Sanjay Kumar Ghosh, Durga Toshniwal, Yoshihide Sekimoto.
+Source: https://huggingface.co/datasets/dronefreak/RDD2022
+Pinned dataset revision: 72b01f94c2e5bfe430861afd73995f2d412b8855
+License: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+Modification: YOLOv8n pothole predictions drawn at640px, confidence0.30.
+Model: https://huggingface.co/dronefreak/rdd2022-yolov8n
+This notice does not apply to helmet-concept.png, an original generated concept asset.
