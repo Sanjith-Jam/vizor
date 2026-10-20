@@ -2,6 +2,10 @@
 
 Connected AR helmet prototype: navigation, shared pothole intelligence and a real Banana Pi photo-inference demo. React/Vite website, Expo Android companion, Supabase backend, Python edge inference and ESP32 firmware share the same contracts.
 
+[Live website](https://vizor-connected-riding.astute-jay-0484.chatgpt.site) · [Android v1.3.1 release](https://github.com/Sanjith-Jam/vizor/releases/tag/app-v1.3.1)
+
+The APK supports Android 7+ on ARM64 devices. Downloads require access to this private repository.
+
 ## Start here
 
 - [Setup](docs/SETUP.md) — local clients, Supabase, restricted Google keys and Gemini.
@@ -39,7 +43,7 @@ npm run website
 npm --prefix mobile-app run web -- --port 8083
 ```
 
-Copy the example environments only when setting up a new machine; preserve configured local files. Live accounts/maps require the services in [Setup](docs/SETUP.md). Browser BLE is unavailable; native BLE requires a development build. No new APK is part of the current delivery.
+Copy the example environments only when setting up a new machine; preserve configured local files. Live accounts/maps require the services in [Setup](docs/SETUP.md). Browser BLE is unavailable; native BLE requires a development build. The configured prototype APK is available from the release link above.
 
 ```sh
 npm run check

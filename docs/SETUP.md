@@ -93,7 +93,7 @@ Follow [Hardware](HARDWARE.md) for the Pi runtime/networking and [Live demo](LIV
 
 ## 6. Android development and optional release
 
-New APK generation is currently paused. Browser preview, typecheck and JS export do not prove Android runtime behavior. Native development requires JDK 17, Android SDK 36, compatible build tools, NDK 27.1.12297006 and CMake 3.22.1. BLE requires a native development build; Expo Go is insufficient.
+The v1.3.1 prototype APK is published in the private repository’s Releases. Browser preview, typecheck and JS export do not prove Android runtime behavior. Native development requires JDK 17, Android SDK 36, compatible build tools, NDK 27.1.12297006 and CMake 3.22.1. BLE requires a native development build; Expo Go is insufficient.
 
 ```sh
 cd mobile-app
@@ -102,6 +102,6 @@ npx expo prebuild --platform android --no-install
 npx expo export --platform android --output-dir ../output/android-js-current
 ```
 
-When APK generation is explicitly resumed, `scripts/build-android.sh` produces `output/android/vizor-1.3.0-arm64.apk` using `ANDROID_HOME` and `JAVA_HOME`. Generated `android/` is ignored. Retain the existing prototype signing certificate for sideload upgrades; Play Store production signing is a separate release task.
+`scripts/build-android.sh` produces `output/android/vizor-<app-version>-arm64.apk` using `ANDROID_HOME` and `JAVA_HOME`. Generated `android/` is ignored. Retain the existing prototype signing certificate for sideload upgrades; Play Store production signing is a separate release task.
 
-The APK workflow runs only manually or for an `app-v*` tag; normal pushes run tests/build checks. The configured update repository is `Sanjith-Jam/vizor`. Because it is private, anonymous in-app release checks cannot download private releases and fail open; do not embed a GitHub token in the app. Set up a public distribution endpoint before using release updates.
+The APK workflow runs manually and uploads a compile-check artifact; normal pushes run tests/build checks. Publish a locally configured, verified APK separately so a tag build cannot replace it with an unconfigured artifact. The configured update repository is `Sanjith-Jam/vizor`. Because it is private, anonymous in-app release checks cannot download private releases and fail open; do not embed a GitHub token in the app. Set up a public distribution endpoint before using release updates.

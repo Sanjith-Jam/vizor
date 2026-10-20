@@ -2,7 +2,7 @@
   "expo": {
     "name": "Vizor",
     "slug": "ar-helmet-nav",
-    "version": "1.3.0",
+    "version": "1.3.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "arhelmetnav",
@@ -27,7 +27,7 @@
         "android.permission.FOREGROUND_SERVICE_LOCATION",
         "android.permission.WAKE_LOCK"
       ],
-      "versionCode": 4,
+      "versionCode": 5,
       "package": "com.anonymous.arhelmetnav"
     },
     "web": {

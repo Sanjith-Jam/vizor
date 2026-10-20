@@ -1,6 +1,6 @@
 # Verification and remaining work
 
-Last accepted: 19 October 2026. This describes the current source and bench demonstration, not a certified riding product.
+Last updated: 20 October 2026. This describes the current source and bench demonstration, not a certified riding product.
 
 | Check | Result |
 | --- | --- |
@@ -12,7 +12,7 @@ Last accepted: 19 October 2026. This describes the current source and bench demo
 | Mobile TypeScript | Passed |
 | Website TypeScript + production build | Passed |
 | Expo dependency compatibility and Doctor | Passed; Doctor 21/21 |
-| Android native prebuild and JS/Hermes export | Passed; no new APK generated |
+| Android v1.3.1 / code 5 APK | Native release build passed; ARM64, Android 7+, prototype certificate verified |
 | Live Google Maps | Rendered in website and app browser preview |
 | Live Places / motorcycle Routes | Five search matches and two actual route alternatives |
 | Authenticated Gemini text request | Passed; unknown battery remained unknown |
@@ -31,14 +31,18 @@ The premium static UI audit is not a clean pass: its scanner treated React Nativ
 
 ## Repository cleanup acceptance
 
-Current documentation is consolidated into six guides. Unused starter UI, duplicated schema, old packaging/video scripts and the legacy notebook were removed. Runtime protocols and ordered database migrations were retained. The source-only publish candidate passed Gitleaks and exact checks against the locally configured credentials. A clean source checkout, without private environment files or Expo-generated route types, passed the website build, mobile typecheck and 93 shared/mobile tests using the installed locked dependencies. GitHub CI exposed inherited Expo compiler settings in the standalone website build; Vite now explicitly uses the website tsconfig. The failure was reproduced and the fix passed with mobile dependencies absent. Full Python/model tests add 47 passing tests, for 140 total. Firmware compilation passed. No APK or production deployment was triggered.
+Current documentation is consolidated into six guides. Unused starter UI, duplicated schema, old packaging/video scripts and the legacy notebook were removed. Runtime protocols and ordered database migrations were retained. The source-only publish candidate passed Gitleaks and exact checks against the locally configured credentials. A clean source checkout, without private environment files or Expo-generated route types, passed the website build, mobile typecheck and 93 shared/mobile tests using the installed locked dependencies. GitHub CI exposed inherited Expo compiler settings in the standalone website build; Vite now explicitly uses the website tsconfig. The failure was reproduced and the fix passed with mobile dependencies absent. Full Python/model tests add 47 passing tests, for 140 total. Firmware compilation passed. That cleanup did not trigger APK generation or deployment. The subsequent v1.3.1 release adds a configured APK and updates the hosted website.
+
+## APK release verification
+
+The configured v1.3.1 APK is 54,527,083 bytes, package `com.anonymous.arhelmetnav`, version code 5, minimum Android SDK 24 and target SDK 36. Its signature matches the previous prototype certificate. SHA-256: `59ef52f5237ce538f298f68f580368ff0161c6561ff7b1577bbc76b87cf2166d`. Scanning decompressed APK entries found none of the configured server keys, access token, device token or demo password. Native compilation does not establish phone runtime acceptance.
 
 ## Remaining acceptance
 
 - Target Android: native Maps key authorization, gallery picker, microphone/TTS, BLE reconnect, safe areas, TalkBack/large text, foreground/background permission, screen-off ride and process recovery on the target OEM.
 - Helmet: ESP32-CAM streaming/reconnect, moving GNSS/camera timing, measured IMU, actual UART/BLE/OLED warnings alongside navigation, physical PTT, battery measurement and sustained thermal/power/USB stability.
 - Model: larger labeled helmet footage including Indian wet/night roads, shadows, patches and manholes; select operational thresholds on validation data. The tiny diagnostic subset is not a general accuracy claim.
-- Deployment: publish the latest clients to the intended domain, check owner Auth redirects/SMTP, define retention/account-deletion/contact procedures and review billing/quotas. Old public pages and old APKs predate the current source.
-- Release: APK generation remains paused. Prototype signing is not production signing. Private GitHub repository releases are not anonymously accessible to the app updater.
+- Deployment: verify owner SMTP delivery, define retention/account-deletion/contact procedures and review billing/quotas. The hosted origin is allowed by the restricted Maps browser key; Supabase Auth redirects include it.
+- Release: the v1.3.1 APK retains prototype signing, not production signing. Private GitHub repository releases are not anonymously accessible to the app updater.
 
 Training, always-listening voice, new hardware features and Play Store publication remain outside the requested scope. Google free allowances/trial eligibility are account-dependent; the ₹100 billing alert is not a spending cap.

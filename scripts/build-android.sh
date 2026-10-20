@@ -7,4 +7,5 @@ npm ci
 npx expo prebuild --platform android --no-install
 ./android/gradlew -p android assembleRelease -PreactNativeArchitectures=arm64-v8a --max-workers=2 --console=plain
 mkdir -p ../output/android
-cp android/app/build/outputs/apk/release/app-release.apk ../output/android/vizor-1.3.0-arm64.apk
+release_version=$(node -p "require('./app.json').expo.version")
+cp android/app/build/outputs/apk/release/app-release.apk "../output/android/vizor-${release_version}-arm64.apk"

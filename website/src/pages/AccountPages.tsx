@@ -271,14 +271,18 @@ export function DownloadPage() {
         and push-to-talk assistance. One focused companion for the journey.
       </p>
       {url ? (
-        <a className="primary-button" href={url}>
-          Download Android APK <ArrowUpRight size={18} />
-        </a>
+        <>
+          <a className="primary-button" href={url}>
+            Download Android APK <ArrowUpRight size={18} />
+          </a>
+          <p className="info-note">
+            This prototype release is in a private GitHub repository. Sign in to
+            GitHub with an account that has access to download it.
+          </p>
+        </>
       ) : (
         <p className="info-note">
-          The latest build is delivered with this project. A hosted APK download
-          becomes available when its release URL is configured. The existing
-          v1.2.0 release predates these changes.
+          The Android release is not available from this deployment yet.
         </p>
       )}
       <Link className="text-link" to="/demo">

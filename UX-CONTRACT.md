@@ -19,7 +19,7 @@ Sample landmark search is local. Live search/routes send queries/endpoints to Go
 - Four tabs: Ride, Hazards, Helmet, Profile. Focus and stack transitions respect OS reduced motion. Decorative loops stop when unfocused. Alerts remain legible and actionable.
 - Destination selection uses real Katpadi geography. Recorded sample route/hazards remain explicitly labeled and cannot start a real ride. GPS permission is requested only when a real position is needed.
 - Light surfaces must preserve readable muted text; dark HUD and SOS text use explicit contrasting colors. `theme/contrast.test.ts` checks normal-text roles at 4.5:1.
-- No new APK is part of this redesign. Native compatibility is checked with types, tests and JS export; Bluetooth, Android safe areas, large system text and screen-off behavior require physical device review.
+- The v1.3.1 prototype APK passed native compilation, signature verification, types and tests; Bluetooth, Android safe areas, large system text and screen-off behavior require physical device review.
 
 - Speed warnings are removed from preferences and ride processing; legacy stored limits are discarded without deleting other preferences.
 - Readiness checks and charts derive solely from actual local/cloud state. Empty weeks remain zero. Report layer filters change only displayed records, never verification status. Assistant shortcut chips prefill a request; they do not auto-record or auto-submit.
