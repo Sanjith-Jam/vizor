@@ -29,3 +29,19 @@ Sample landmark search is local. Live search/routes send queries/endpoints to Go
 The canonical backend owners are `queue_inference`, `claim_inference`, `finish_inference`, `cancel_inference` and `retry_inference`; both clients use the same jobs, private evidence and observations. Shared result validation and marker eligibility live in `shared/contracts.ts`. Native uploads use Expo ImagePicker/ImageManipulator; web uses a labeled file input and canvas JPEG normalization. UUIDs survive retries of the same request. One photo represents one approximate location even with multiple boxes. Only completed positive detections become map points. Real reports require explicit actual-location confirmation; replay never becomes a shared pothole.
 
 Realtime refresh is debounced, with reconnect/foreground/manual catch-up. Freshness clocks are local; Google Maps never polls. Cloud jobs survive client closure. Failed/cancelled jobs can retry; lease attempts never repeat across retries. Maps are opt-in per screen. Signed private evidence expires. Prepared, unsubmitted photos are screen-local and must be reselected after closing. Lists show latest 20 jobs / 30 observations deliberately for this showcase.
+
+## Administration contract — 20 October 2026
+
+The user requested an application owner/admin console covering users, permissions, potholes and Supabase application data. `docs/ADMIN.md` and `admin_console` are the permission/lifecycle source of truth. Normal rider RLS remains separate; metadata never authorizes staff access. Server checks happen for every action. Fixed owner authority, serialized role assignments and last-owner protection take precedence over client choices.
+
+| Capability | Canonical owner | Behavior | Verification |
+| --- | --- | --- | --- |
+| Admin tables | AdminPage + admin_console list | Server paging (25), explicit search and clear, no bulk selection, stable identifier and horizontal overflow | SQL authorization checks; browser |
+| Select/checkbox | Native HTML controls in AdminPage | Product accepts OS popup and keyboard behavior | Browser keyboard |
+| Editor/confirmation | AdminPage dialog styled by admin.css | Modal focus and Escape; permission, revoke and shared-data changes require app confirmation; pending disables duplicates | Browser + shared edit tests |
+| Feedback | AdminPage live-region banners | Server acknowledgement before success, inline recoverable error, preserve input | Browser |
+| CRUD | admin_console | Field allowlist, checked types, original-value conflicts, retained audit, no hard deletion | supabase/tests/admin_console.sql |
+| Search privacy | AdminPage state | Search text is transient; dataset/section navigation only in URL, avoiding emails/phones in history | Source inspection |
+| Date/time | Existing Intl formatting | English India, Asia/Kolkata, unknown stays unknown | Browser |
+
+The database explorer uses lifecycle actions for jobs and device credentials; raw machine records are read-only. Infrastructure changes link to the authenticated Supabase project instead of exposing a client SQL executor or server key.

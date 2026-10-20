@@ -3,8 +3,21 @@ import { KATPADI_BOUNDS, KATPADI_CENTER } from "./katpadi";
 
 export const GOOGLE_KATPADI_URL =
   "https://www.google.com/maps/search/?api=1&query=Katpadi%2C+Vellore";
+/** Hands the route to the Google Maps app/site for live turn-by-turn. A null
+ * origin lets Google Maps use the device's current location. */
+export function googleDirectionsUrl(origin: Point | null, destination: Point) {
+  const q = new URLSearchParams({
+    api: "1",
+    destination: `${destination.lat},${destination.lon}`,
+    travelmode: "two-wheeler",
+    dir_action: "navigate",
+  });
+  if (origin) q.set("origin", `${origin.lat},${origin.lon}`);
+  return `https://www.google.com/maps/dir/?${q}`;
+}
 export type GoogleMapData = {
   position: Point | null;
+  origin?: Point | null;
   destination?: Point | null;
   route: Point[];
   potholes: Pothole[];
@@ -19,6 +32,15 @@ export type GoogleMapCallbacks = {
     east: number;
   }) => void;
 };
+/** Pothole dot colors by status; shared by the website legend. */
+export const HAZARD_COLORS: Record<Pothole["status"], string> = {
+  suspected: "#F59E0B",
+  corroborated: "#DC2626",
+  disputed: "#9CA3AF",
+  repaired: "#16A34A",
+};
+const dot = (fill: string, size: number, ring = "#FFFFFF", border = 2) =>
+  `<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:${border}px solid ${ring};box-shadow:0 1px 3px #0005"></span>`;
 const authErrors = new Set<() => void>();
 export function onGoogleMapAuthError(callback: () => void) {
   authErrors.add(callback);
@@ -81,8 +103,7 @@ export function createGoogleMap(
       id: string,
       point: Point,
       title: string,
-      label: string,
-      color: string,
+      html: string,
       action?: () => void,
     ) => {
       visible.add(id);
@@ -90,9 +111,13 @@ export function createGoogleMap(
       const node =
         existing?.node || document.createElement(action ? "button" : "div");
       if (node instanceof HTMLButtonElement) node.type = "button";
-      node.textContent = label;
+      if (node.innerHTML !== html) node.innerHTML = html;
       node.setAttribute("aria-label", title);
-      node.style.cssText = `width:32px;height:32px;border:3px solid white;border-radius:50%;background:${color};color:white;display:grid;place-items:center;font:bold 15px sans-serif;box-shadow:0 2px 8px #0003;cursor:${action ? "pointer" : "default"}`;
+      node.title = title;
+      // Markers anchor bottom-centre: the pin tip sits on the point, dots are
+      // shifted down to centre on it. Padding keeps a finger-sized hit area.
+      const pin = id === "destination";
+      node.style.cssText = `padding:${pin ? 0 : 6}px;border:0;background:none;display:grid;place-items:center;transform:translateY(${pin ? 0 : 50}%);cursor:${action ? "pointer" : "default"}`;
       if (action)
         node.onclick = (event) => {
           event.stopPropagation();
@@ -107,7 +132,7 @@ export function createGoogleMap(
         map,
         position: { lat: point.lat, lng: point.lon },
         title,
-        zIndex: id.startsWith("hazard-") ? 100 : 1,
+        zIndex: id === "rider" ? 300 : id.startsWith("hazard-") ? 100 : 200,
         content: node,
       });
       markers.set(id, { marker, node });
@@ -116,15 +141,31 @@ export function createGoogleMap(
       addMarker(
         `hazard-${p.id}`,
         p,
-        `${p.status} road report ${p.id}`,
-        p.status === "repaired" ? "✓" : "!",
-        p.status === "repaired" ? "#286444" : "#9C5518",
+        `${p.status} pothole · ${p.sightings} sighting${p.sightings === 1 ? "" : "s"}`,
+        dot(HAZARD_COLORS[p.status] || HAZARD_COLORS.suspected, 11),
         () => callbacks.onHazard?.(p),
       );
+    if (data.origin)
+      addMarker(
+        "origin",
+        data.origin,
+        "Start",
+        dot("#FFFFFF", 14, "#20201E", 4),
+      );
     if (data.position)
-      addMarker("rider", data.position, "Rider position", "↑", "#2563EB");
+      addMarker(
+        "rider",
+        data.position,
+        "Your location",
+        `<span style="width:18px;height:18px;border-radius:50%;background:#1A73E8;border:3px solid #fff;box-shadow:0 0 0 7px #1A73E833,0 1px 4px #0006"></span>`,
+      );
     if (data.destination)
-      addMarker("destination", data.destination, "Destination", "•", "#20201E");
+      addMarker(
+        "destination",
+        data.destination,
+        "Destination",
+        `<svg width="28" height="38" viewBox="0 0 28 38"><path d="M14 37C14 37 27 22 27 13.5A13 13 0 0 0 1 13.5C1 22 14 37 14 37Z" fill="#EA4335" stroke="#B31412" stroke-width="1.5"/><circle cx="14" cy="13.5" r="5" fill="#B31412"/></svg>`,
+      );
     markers.forEach((entry, id) => {
       if (!visible.has(id)) {
         entry.marker.map = null;
@@ -142,6 +183,10 @@ export function createGoogleMap(
   return {
     update,
     overview,
+    focus(point: Point) {
+      map.panTo({ lat: point.lat, lng: point.lon });
+      map.setZoom(Math.max(map.getZoom() || 0, 16));
+    },
     destroy() {
       listeners.forEach((listener) => listener.remove());
       markers.forEach(({ marker }) => {

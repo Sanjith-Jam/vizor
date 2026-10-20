@@ -93,7 +93,7 @@ Follow [Hardware](HARDWARE.md) for the Pi runtime/networking and [Live demo](LIV
 
 ## 6. Android development and optional release
 
-The v1.3.1 prototype APK is published in the private repository’s Releases. Browser preview, typecheck and JS export do not prove Android runtime behavior. Native development requires JDK 17, Android SDK 36, compatible build tools, NDK 27.1.12297006 and CMake 3.22.1. BLE requires a native development build; Expo Go is insufficient.
+The v1.4.0 prototype APK is published in the private repository’s Releases. Browser preview, typecheck and JS export do not prove Android runtime behavior. Native development requires JDK 17, Android SDK 36, compatible build tools, NDK 27.1.12297006 and CMake 3.22.1. BLE requires a native development build; Expo Go is insufficient.
 
 ```sh
 cd mobile-app

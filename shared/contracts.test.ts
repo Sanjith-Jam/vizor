@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   validateObservation,
   validateReply,
+  assistantContext,
   flushQueue,
   routeHazards,
   upcomingHazards,
@@ -125,4 +126,70 @@ test("route plans reject incomplete or invalid guidance before navigation", asyn
     [{ ...DEMO_ROUTE, steps: [] }],
   ])
     assert.throws(() => validateRoutePlans(value));
+});
+
+test("assistant context summarises route state and replies accept an origin", () => {
+  const route = {
+    geometry: [
+      { lat: 12.97, lon: 79.14 },
+      { lat: 12.97, lon: 79.15 },
+    ],
+    steps: [
+      {
+        maneuver: { type: "depart" },
+        location: { lat: 12.97, lon: 79.14 },
+        roadName: "",
+        distance: 0,
+        instruction: "Head east",
+      },
+      {
+        maneuver: { type: "arrive" },
+        location: { lat: 12.97, lon: 79.15 },
+        roadName: "",
+        distance: 1000,
+        instruction: "Arrive at VIT",
+      },
+    ],
+    distance: 1084,
+    duration: 130,
+  };
+  const ctx = assistantContext({
+    position: null,
+    destination: {
+      id: "v",
+      name: "VIT",
+      address: "Katpadi",
+      location: route.geometry[1],
+    },
+    route,
+    potholes: [
+      {
+        id: "p",
+        lat: 12.97,
+        lon: 79.145,
+        status: "suspected",
+        sightings: 1,
+        first_seen: "",
+        last_seen: "",
+        uncertainty_m: 10,
+      },
+    ],
+    rideActive: false,
+    muted: false,
+  });
+  assert.equal(ctx.currentLocation, "unknown");
+  assert.equal(ctx.route?.minutes, 3);
+  assert.equal(ctx.route?.nextInstruction, "Arrive at VIT");
+  assert.equal(ctx.route?.reportedHazardsOnRoute, 1);
+  assert.equal(
+    validateReply({
+      message: "ok",
+      transcript: "",
+      action: "navigate",
+      destination: "VIT",
+      origin: "Katpadi",
+    }).origin,
+    "Katpadi",
+  );
+  assert.ok(validateReply({ message: "ok", transcript: "", action: "locate" }));
 });

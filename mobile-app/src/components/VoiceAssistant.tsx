@@ -19,11 +19,13 @@ import { useHelmetConnection } from "../hooks/useHelmetConnection";
 import { useSettings } from "../hooks/useSettings";
 import { useCloud } from "../cloud/useCloud";
 import {
+  assistantContext,
   validateReply,
-  upcomingHazards,
   type AssistantReply,
+  type AssistantTurn,
   type Pothole,
 } from "../../../shared/contracts";
+import { plannedRide } from "../nav/osrmClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing } from "../theme";
 export function VoiceAssistant({
@@ -45,7 +47,8 @@ export function VoiceAssistant({
     [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null),
     controller = useRef<AbortController | null>(null),
-    toggleRef = useRef<() => void>(() => {});
+    toggleRef = useRef<() => void>(() => {}),
+    turns = useRef<AssistantTurn[]>([]);
   const ask = async (audio?: string) => {
     if (busy || (!audio && !text.trim())) return;
     setBusy(true);
@@ -61,14 +64,22 @@ export function VoiceAssistant({
             text,
             audio,
             mimeType: "audio/mp4",
+            history: turns.current,
             context: {
-              destination: ride.destination?.name,
-              upcomingHazards:
-                ride.route && ride.position
-                  ? upcomingHazards(ride.route.geometry, ride.position, cached)
-                      .length
-                  : null,
-              helmet: telemetry,
+              ...assistantContext({
+                position:
+                  ride.position || (await ride.getCurrentPosition()) || null,
+                destination: ride.destination || plannedRide.destination,
+                route: ride.route || plannedRide.route,
+                nextStepIndex: ride.progress?.nextStepIndex,
+                distanceToManeuver: ride.progress?.distanceToManeuver,
+                potholes: cached,
+                rideActive: ride.phase === "active",
+                muted: !settings.voicePrompts,
+                helmet: telemetry,
+              }),
+              helmetLink: connection.status,
+              speedKmh: Math.round(ride.speedMps * 3.6),
             },
           },
           controller.current.signal,
@@ -78,11 +89,34 @@ export function VoiceAssistant({
         `${answer.transcript ? "You: " + answer.transcript + "\n" : ""}${answer.message}`,
       );
       if (settings.voicePrompts) Speech.speak(answer.message);
+      turns.current = [
+        ...turns.current,
+        { role: "user" as const, text: answer.transcript || text },
+        { role: "model" as const, text: answer.message },
+      ].slice(-8);
       if (answer.action === "navigate") {
         router.push({
           pathname: "/navigate",
-          params: { query: answer.destination },
+          params: {
+            query: answer.destination,
+            origin: answer.origin || "",
+            at: String(Date.now()),
+          },
         });
+      }
+      if (answer.action === "locate") {
+        const here = await ride.getCurrentPosition();
+        if (!here) throw Error("Location permission is needed.");
+        router.push("/navigate");
+      }
+      if (answer.action === "start") {
+        if (ride.phase === "active") router.push("/ride");
+        else if (!plannedRide.route)
+          throw Error("Choose a destination first, then say start.");
+        else {
+          await ride.startRide(plannedRide.destination, plannedRide.route);
+          router.push("/ride");
+        }
       }
       if (answer.action === "cancel") ride.endRide();
       if (answer.action === "mute") update({ voicePrompts: false });

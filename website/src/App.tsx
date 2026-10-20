@@ -5,7 +5,12 @@ import { lazy, Suspense } from "react";
 const DashboardPage = lazy(() =>
   import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })),
 );
-const PhotoLabPage = lazy(() => import("./pages/PhotoLabPage").then(m => ({ default: m.PhotoLabPage })));
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })),
+);
+const PhotoLabPage = lazy(() =>
+  import("./pages/PhotoLabPage").then((m) => ({ default: m.PhotoLabPage })),
+);
 import {
   AuthPage,
   AccountPage,
@@ -25,14 +30,29 @@ export function App() {
         <Suspense
           fallback={
             <p role="status" className="info-note">
-              Loading your map…
+              Loading Vizor…
             </p>
           }
         >
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/demo" element={<DashboardPage />} />
-            <Route path="/lab" element={<ProtectedRoute><PhotoLabPage /></ProtectedRoute>} />
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute>
+                  <AdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/lab"
+              element={
+                <ProtectedRoute>
+                  <PhotoLabPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/dashboard"
               element={

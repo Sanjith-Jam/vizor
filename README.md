@@ -2,12 +2,13 @@
 
 Connected AR helmet prototype: navigation, shared pothole intelligence and a real Banana Pi photo-inference demo. React/Vite website, Expo Android companion, Supabase backend, Python edge inference and ESP32 firmware share the same contracts.
 
-[Live website](https://vizor-connected-riding.astute-jay-0484.chatgpt.site) · [Android v1.3.1 release](https://github.com/Sanjith-Jam/vizor/releases/tag/app-v1.3.1)
+[Live website](https://vizor-connected-riding.astute-jay-0484.chatgpt.site) · [Android v1.4.0 release](https://github.com/Sanjith-Jam/vizor/releases/tag/app-v1.4.0)
 
 The APK supports Android 7+ on ARM64 devices. Downloads require access to this private repository.
 
 ## Start here
 
+- [Administration](docs/ADMIN.md) — roles, users, shared potholes, devices, application data and audits.
 - [Setup](docs/SETUP.md) — local clients, Supabase, restricted Google keys and Gemini.
 - [Live demo](docs/LIVE_DEMO.md) — photo → Banana Pi → database → map → app.
 - [Hardware](docs/HARDWARE.md) — Banana Pi, Wi-Fi changes, SIM7600X and remaining wiring checks.

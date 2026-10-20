@@ -188,13 +188,67 @@ export const ASSISTANT_ACTIONS = [
   "unmute",
   "cancel",
   "report",
+  "locate",
+  "start",
 ] as const;
 export type AssistantReply = {
   transcript: string;
   message: string;
   action: (typeof ASSISTANT_ACTIONS)[number];
   destination?: string;
+  /** Place text for "from X to Y" requests; absent means current location. */
+  origin?: string;
 };
+export type AssistantTurn = { role: "user" | "model"; text: string };
+/** Compact ride state sent to Gemini; both clients build it the same way. */
+export function assistantContext(s: {
+  position: Point | null;
+  origin?: string | null;
+  destination?: Place | null;
+  route?: RoutePlan | null;
+  nextStepIndex?: number;
+  distanceToManeuver?: number | null;
+  potholes: Pothole[];
+  rideActive: boolean;
+  muted: boolean;
+  helmet?: unknown;
+  demo?: boolean;
+}) {
+  const r = s.route,
+    next = r?.steps[s.nextStepIndex ?? 1];
+  return {
+    demo: !!s.demo,
+    currentLocation: s.position
+      ? { lat: +s.position.lat.toFixed(5), lon: +s.position.lon.toFixed(5) }
+      : "unknown",
+    routeStart: s.origin || "current location",
+    destination: s.destination
+      ? { name: s.destination.name, address: s.destination.address }
+      : null,
+    navigationActive: s.rideActive,
+    route: r
+      ? {
+          distanceKm: +(r.distance / 1000).toFixed(1),
+          minutes: Math.ceil(r.duration / 60),
+          nextInstruction: next?.instruction || null,
+          metersToNextTurn:
+            s.distanceToManeuver == null
+              ? null
+              : Math.round(s.distanceToManeuver),
+          upcomingSteps: r.steps
+            .slice(s.nextStepIndex ?? 1, (s.nextStepIndex ?? 1) + 5)
+            .map((x) => x.instruction),
+          reportedHazardsOnRoute: routeHazards(r.geometry, s.potholes).length,
+          hazardsWithin150m: s.position
+            ? upcomingHazards(r.geometry, s.position, s.potholes).length
+            : null,
+        }
+      : null,
+    hazardsOnMap: s.potholes.filter((p) => p.status !== "repaired").length,
+    voiceMuted: s.muted,
+    helmet: s.helmet ?? null,
+  };
+}
 export function validPoint(value: unknown): value is Point {
   const p = value as Point | null;
   return (
@@ -252,7 +306,9 @@ export function validateReply(value: unknown): AssistantReply {
     (a.action === "navigate" &&
       (typeof a.destination !== "string" ||
         !a.destination.trim() ||
-        a.destination.length > 200))
+        a.destination.length > 200)) ||
+    (a.origin != null &&
+      (typeof a.origin !== "string" || a.origin.length > 200))
   ) {
     throw new Error("The assistant returned an unsupported action.");
   }

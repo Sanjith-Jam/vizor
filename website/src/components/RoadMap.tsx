@@ -1,5 +1,6 @@
 /// <reference types="google.maps" />
 import { useEffect, useRef, useState } from "react";
+import { LocateFixed } from "lucide-react";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import {
   createGoogleMap,
@@ -17,6 +18,8 @@ export function RoadMap(props: {
   route: Point[];
   position: Point | null;
   destination?: Point | null;
+  origin?: Point | null;
+  onLocate?: () => Promise<Point>;
   onSelect: (p: Pothole) => void;
   onDestination: (p: Point) => void;
   onBounds: (bounds: {
@@ -85,7 +88,14 @@ export function RoadMap(props: {
   }, [key, attempt]);
   useEffect(() => {
     renderer.current?.update(props);
-  }, [props.potholes, props.route, props.position, props.destination, ready]);
+  }, [
+    props.potholes,
+    props.route,
+    props.position,
+    props.destination,
+    props.origin,
+    ready,
+  ]);
   return (
     <>
       <div
@@ -94,12 +104,25 @@ export function RoadMap(props: {
         aria-label="Google Maps of Katpadi. Use destination search or click a road."
       />
       {ready && !error && (
-        <button
-          className="map-overview"
-          onClick={() => renderer.current?.overview()}
-        >
-          View all Katpadi
-        </button>
+        <div className="map-overview">
+          {props.onLocate && (
+            <button
+              aria-label="Show my location"
+              title="My location"
+              onClick={() =>
+                void latest.current
+                  .onLocate?.()
+                  .then((p) => renderer.current?.focus(p))
+                  .catch(() => {})
+              }
+            >
+              <LocateFixed size={18} />
+            </button>
+          )}
+          <button onClick={() => renderer.current?.overview()}>
+            View all Katpadi
+          </button>
+        </div>
       )}
       {(!ready || error) && (
         <div

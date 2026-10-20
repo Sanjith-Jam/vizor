@@ -1,7 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowUpRight, Menu, X } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { api } from "../lib/api";
 export function ProductNav() {
+  const { user } = useAuth();
+  const [staff, setStaff] = useState(false);
+  useEffect(() => {
+    setStaff(false);
+    if (!user) return;
+    const controller = new AbortController();
+    api<{ permissions: string[] }>(
+      "admin",
+      { operation: "context" },
+      controller.signal,
+    )
+      .then((r) => {
+        if (!controller.signal.aborted) setStaff(r.permissions.length > 0);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [user?.id]);
   const [open, setOpen] = useState(false),
     panel = useRef<HTMLDivElement>(null),
     trigger = useRef<HTMLButtonElement>(null);
@@ -83,6 +102,7 @@ export function ProductNav() {
             ["Your dashboard", "/dashboard"],
             ["Connected photo demo", "/lab"],
             ["Get the app", "/#app"],
+            ...(staff ? [["Administration", "/admin"]] : []),
           ].map(([label, url], i) => (
             <Link key={url} to={url} onClick={() => setOpen(false)}>
               <span>0{i + 1}</span>

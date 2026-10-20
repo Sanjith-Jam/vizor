@@ -16,3 +16,10 @@ export async function searchPlaces(
 ): Promise<Place[]> {
   return cloudApi<Place[]>("places", { query, near: _near });
 }
+/** Route currently previewed on the Navigate screen, so the voice assistant
+ * can start it. ponytail: module state, move into RideProvider if more
+ * screens need it. */
+export const plannedRide: { destination: Place | null; route: Route | null } = {
+  destination: null,
+  route: null,
+};

@@ -6,6 +6,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bluetooth,
+  LocateFixed,
   Mic,
   Search,
   Send,
@@ -19,6 +20,10 @@ import {
 } from "lucide-react";
 import { RoadMap } from "../components/RoadMap";
 import {
+  googleDirectionsUrl,
+  HAZARD_COLORS,
+} from "../../../shared/googleMapView";
+import {
   queueObservation,
   syncObservations,
   pendingObservations,
@@ -27,19 +32,25 @@ import { api } from "../lib/api";
 import { supabase } from "../lib/supabase";
 import { DEMO_POTHOLES, DEMO_ROUTE, DEMO_START } from "../../../shared/demo";
 import {
+  assistantContext,
   distanceMeters,
   routeHazards,
   upcomingHazards,
   validateReply,
   validateRoutePlans,
   type AssistantReply,
+  type AssistantTurn,
   type Place,
   type Point,
   type Pothole,
   type RoutePlan,
   type Telemetry,
 } from "../../../shared/contracts";
-import { searchKatpadi, KATPADI_PLACES } from "../../../shared/katpadi";
+import {
+  searchKatpadi,
+  KATPADI_CENTER,
+  KATPADI_PLACES,
+} from "../../../shared/katpadi";
 import { computeProgress } from "../../../mobile-app/src/nav/route";
 import type { Route } from "../../../mobile-app/src/nav/route";
 async function katpadiRoutes(
@@ -59,6 +70,8 @@ export function DashboardPage() {
     [pending, setPending] = useState(pendingObservations),
     [evidence, setEvidence] = useState<any[]>([]),
     [query, setQuery] = useState(""),
+    [origin, setOrigin] = useState<Place | null>(null),
+    [field, setField] = useState<"from" | "to">("to"),
     [places, setPlaces] = useState<Place[]>([]),
     [routes, setRoutes] = useState<RoutePlan[]>(demo ? [DEMO_ROUTE] : []),
     [routeIndex, setRouteIndex] = useState(0),
@@ -94,6 +107,7 @@ export function DashboardPage() {
     lastPosition = useRef<Point | null>(null),
     cancelRecording = useRef(false),
     lastBounds = useRef<any>(null),
+    turns = useRef<AssistantTurn[]>([]),
     warningUntil = useRef(0),
     fixAccuracy = useRef<number | null>(null);
   useEffect(() => {
@@ -290,11 +304,16 @@ export function DashboardPage() {
       setBusy(false);
     }
   };
+  const findPlaces = async (text: string) =>
+    demo
+      ? searchKatpadi(text)
+      : api<Place[]>("places", {
+          query: text,
+          near: position || KATPADI_CENTER,
+        });
   const search = () =>
     run(async () => {
-      const results = demo
-        ? searchKatpadi(query)
-        : await api<Place[]>("places", { query });
+      const results = await findPlaces(query);
       setPlaces(results);
       if (!results.length)
         setReply(
@@ -318,7 +337,22 @@ export function DashboardPage() {
         { enableHighAccuracy: true, timeout: 15000 },
       );
     });
-  const choose = async (place: Place) => {
+  const pick = (place: Place) => {
+    if (field === "to") return void choose(place);
+    setOrigin(place);
+    setField("to");
+    setPlaces([]);
+    setQuery(destination.current?.name || "");
+    if (destination.current) void choose(destination.current, place);
+  };
+  const useMyLocation = async () => {
+    const point = await getPosition();
+    setOrigin(null);
+    setField("to");
+    if (destination.current && !active) void choose(destination.current, null);
+    return point;
+  };
+  const choose = async (place: Place, from: Place | null = origin) => {
     routeRequest.current?.abort();
     const controller = new AbortController();
     routeRequest.current = controller;
@@ -332,7 +366,9 @@ export function DashboardPage() {
     setReplaying(false);
     setRoutes([]);
     try {
-      const here = demo ? DEMO_START : position || (await getPosition());
+      const here = demo
+        ? DEMO_START
+        : from?.location || position || (await getPosition());
       const result =
         demo && place.id === KATPADI_PLACES[1].id
           ? [DEMO_ROUTE]
@@ -424,10 +460,21 @@ export function DashboardPage() {
     );
     speak(answer.message);
     if (answer.action === "navigate") {
-      setQuery(answer.destination!);
-      if (!demo)
-        setPlaces(await api<Place[]>("places", { query: answer.destination! }));
+      let from: Place | null = null;
+      if (answer.origin) {
+        from = (await findPlaces(answer.origin))[0] || null;
+        if (!from) throw new Error(`Couldn't find “${answer.origin}”.`);
+        setOrigin(from);
+      }
+      const found = await findPlaces(answer.destination!);
+      if (!found.length)
+        throw new Error(`Couldn't find “${answer.destination}”.`);
+      setField("to");
+      await choose(found[0], from ?? origin);
+      setPlaces(found.slice(1));
     }
+    if (answer.action === "locate") await useMyLocation();
+    if (answer.action === "start" && !active) await start();
     if (answer.action === "repeat")
       speak(
         route?.steps[progress?.nextStepIndex || 1]?.instruction ||
@@ -472,18 +519,29 @@ export function DashboardPage() {
           text: message,
           audio,
           mimeType,
-          context: {
-            destination: destination.current?.name,
-            upcomingHazards:
-              route && position
-                ? upcomingHazards(route.geometry, position, potholes).length
-                : null,
+          history: turns.current,
+          context: assistantContext({
+            position,
+            origin: origin?.name,
+            destination: destination.current,
+            route,
+            nextStepIndex: progress?.nextStepIndex,
+            distanceToManeuver: progress?.distanceToManeuver,
+            potholes,
+            rideActive: active,
+            muted,
             helmet: telemetry,
-          },
+          }),
         },
         request.current.signal,
       );
-      await executeReply(validateReply(answer));
+      const valid = validateReply(answer);
+      turns.current = [
+        ...turns.current,
+        { role: "user" as const, text: valid.transcript || message },
+        { role: "model" as const, text: valid.message },
+      ].slice(-8);
+      await executeReply(valid);
       setMessage("");
     });
   const record = async () => {
@@ -551,7 +609,45 @@ export function DashboardPage() {
             <span className="demo-tag">{demo ? "DEMO" : "LIVE SERVICES"}</span>
           </div>
           <div className="destination-panel">
-            <label htmlFor="destination">Where are you heading?</label>
+            <div className="from-row">
+              <span>From</span>
+              <strong>
+                {demo
+                  ? "Katpadi bus stand (sample)"
+                  : origin?.name || "Your current location"}
+              </strong>
+              {!demo && (
+                <>
+                  <button
+                    type="button"
+                    className="filter-button"
+                    onClick={() => {
+                      setField(field === "from" ? "to" : "from");
+                      setPlaces([]);
+                      setQuery(
+                        field === "from" ? destination.current?.name || "" : "",
+                      );
+                    }}
+                  >
+                    {field === "from" ? "Cancel" : "Change"}
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Use my current location"
+                    title="Use my current location"
+                    onClick={() =>
+                      void run(async () => void (await useMyLocation()))
+                    }
+                  >
+                    <LocateFixed size={15} />
+                  </button>
+                </>
+              )}
+            </div>
+            <label htmlFor="destination">
+              {field === "from" ? "Starting point" : "Where are you heading?"}
+            </label>
             <form
               className="search-form"
               noValidate
@@ -562,7 +658,11 @@ export function DashboardPage() {
             >
               <input
                 id="destination"
-                placeholder="VIT or Katpadi bus stand"
+                placeholder={
+                  field === "from"
+                    ? "Search a starting place"
+                    : "VIT or Katpadi bus stand"
+                }
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 minLength={2}
@@ -596,7 +696,7 @@ export function DashboardPage() {
             </p>
             <div className="place-results">
               {places.map((p) => (
-                <button key={p.id} onClick={() => void choose(p)}>
+                <button key={p.id} onClick={() => pick(p)}>
                   {p.name}
                   <small>{p.address}</small>
                 </button>
@@ -645,6 +745,19 @@ export function DashboardPage() {
                 {demo ? "Replay the journey" : "Start navigation"}{" "}
                 <ArrowUpRight size={17} />
               </button>
+            )}
+            {route && destination.current && !demo && (
+              <a
+                className="filter-button maps-handoff"
+                href={googleDirectionsUrl(
+                  origin?.location || null,
+                  destination.current.location,
+                )}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Navigate in Google Maps <ArrowUpRight size={14} />
+              </a>
             )}
             {active && (
               <div className="ride-active">
@@ -704,7 +817,9 @@ export function DashboardPage() {
           <div className="dashboard-toolbar">
             <h1>Road intelligence.</h1>
             <div>
-              <Link className="filter-button" to="/lab">Photo demo ↗</Link>
+              <Link className="filter-button" to="/lab">
+                Photo demo ↗
+              </Link>
               <button
                 className="filter-button"
                 onClick={() => void reportHere()}
@@ -759,9 +874,11 @@ export function DashboardPage() {
               route={route?.geometry || []}
               position={position}
               destination={destination.current?.location}
+              origin={origin?.location}
+              onLocate={useMyLocation}
               onSelect={setSelected}
               onDestination={(p) =>
-                void choose({
+                void pick({
                   id: "pin",
                   name: "Selected destination",
                   address: "Map pin",
@@ -770,19 +887,26 @@ export function DashboardPage() {
               }
               onBounds={bounds}
             />
-            <div className="map-stat">
-              <span>
-                {demo
-                  ? "KATPADI · SAMPLE HAZARDS"
-                  : recorded
-                    ? "RECORDED REPLAY"
-                    : "VISIBLE MAP AREA"}
-              </span>
-              <strong>{visible.length.toString().padStart(2, "0")}</strong>
-              <p>
-                Reported road hazards.
-                <br />A shared memory for the road.
-              </p>
+            <div
+              className="map-stat"
+              aria-label={`${visible.length} reported road hazards in view`}
+            >
+              <strong>{visible.length} potholes</strong>
+              {(["suspected", "corroborated", "disputed", "repaired"] as const)
+                .map(
+                  (status) =>
+                    [
+                      status,
+                      visible.filter((p) => p.status === status).length,
+                    ] as const,
+                )
+                .filter(([, n]) => n > 0)
+                .map(([status, n]) => (
+                  <span key={status}>
+                    <i style={{ background: HAZARD_COLORS[status] }} />
+                    {n} {status}
+                  </span>
+                ))}
             </div>
             {demo && (
               <div className="map-controls">
@@ -818,7 +942,7 @@ export function DashboardPage() {
                 ? "KATPADI · SCRIPTED RIDE & SAMPLE HAZARDS · NOT LIVE ROAD DATA"
                 : recorded
                   ? "RECORDED DETECTIONS · REPLAY LOCATIONS ARE NOT LIVE REPORTS"
-                  : "OPENSTREETMAP · PROJECT HAZARDS ARE APPROXIMATE OBSERVATIONS"}
+                  : "GOOGLE MAPS · PROJECT HAZARDS ARE APPROXIMATE OBSERVATIONS"}
             </div>
             {selected && (
               <aside className="hazard-drawer" aria-label="Hazard details">

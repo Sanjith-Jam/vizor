@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   StyleSheet,
   TextInput,
@@ -19,19 +20,29 @@ import {
 } from "../components/ui";
 import { useRide } from "../hooks/useRide";
 import { useSettings } from "../hooks/useSettings";
-import { fetchRoutes, searchPlaces, type Place } from "../nav/osrmClient";
+import {
+  fetchRoutes,
+  plannedRide,
+  searchPlaces,
+  type Place,
+} from "../nav/osrmClient";
 import { formatDistance, haversineMeters, type LatLon } from "../nav/geo";
 import { useCloud } from "../cloud/useCloud";
 import { routeHazards } from "../../../shared/contracts";
 import type { Route } from "../nav/route";
 import { DEMO_START, DEMO_ROUTE, DEMO_POTHOLES } from "../../../shared/demo";
-import { KATPADI_PLACES } from "../../../shared/katpadi";
+import { KATPADI_CENTER, KATPADI_PLACES } from "../../../shared/katpadi";
+import { googleDirectionsUrl } from "../../../shared/googleMapView";
 import { MapCanvas } from "../components/MapCanvas";
 import { colors, fonts, radius, spacing, TOUCH_TARGET } from "../theme";
 
 export default function NavigateScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ query?: string }>();
+  const params = useLocalSearchParams<{
+    query?: string;
+    origin?: string;
+    at?: string;
+  }>();
   const ride = useRide();
   const { hazards, loadHazards } = useCloud();
   const [destination, setDestination] = useState<Place | null>(null),
@@ -45,6 +56,8 @@ export default function NavigateScreen() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [here, setHere] = useState<LatLon | null>(null);
   const [startingId, setStartingId] = useState<string | null>(null);
+  const [origin, setOrigin] = useState<Place | null>(null);
+  const [field, setField] = useState<"from" | "to">("to");
 
   const search = async () => {
     const q = query.trim();
@@ -52,7 +65,7 @@ export default function NavigateScreen() {
     setSearching(true);
     setSearchError(null);
     try {
-      setResults(await searchPlaces(q, here));
+      setResults(await searchPlaces(q, here || KATPADI_CENTER));
     } catch (e) {
       setSearchError((e as Error).message);
     } finally {
@@ -60,25 +73,79 @@ export default function NavigateScreen() {
     }
   };
 
-  const go = async (place: Place) => {
+  const pick = (place: Place) => {
+    if (field === "to") return void go(place);
+    setOrigin(place);
+    setField("to");
+    setResults(null);
+    setQuery(destination?.name || "");
+    if (destination) void go(destination, place);
+  };
+
+  const useMyLocation = async () => {
+    setSample(false);
+    setOrigin(null);
+    setField("to");
+    const p = await ride.getCurrentPosition();
+    if (p) setHere(p);
+    if (p && destination && !sample) void go(destination, null, p);
+  };
+
+  // Voice assistant hands over "navigate [from X] to Y": search and preview.
+  useEffect(() => {
+    if (!params.query) return;
+    void (async () => {
+      setSample(false);
+      setField("to");
+      setSearching(true);
+      setSearchError(null);
+      try {
+        const from = params.origin
+          ? (await searchPlaces(params.origin, here || KATPADI_CENTER))[0]
+          : null;
+        if (params.origin && !from)
+          throw new Error(`Couldn't find “${params.origin}”.`);
+        setOrigin(from);
+        const found = await searchPlaces(params.query!, here || KATPADI_CENTER);
+        setResults(found);
+        if (found[0]) await go(found[0], from);
+      } catch (e) {
+        setSearchError((e as Error).message);
+      } finally {
+        setSearching(false);
+      }
+    })();
+  }, [params.query, params.origin, params.at]);
+
+  useEffect(() => {
+    plannedRide.destination = sample ? null : destination;
+    plannedRide.route = sample ? null : routes[selected] || null;
+  }, [sample, destination, routes, selected]);
+
+  const go = async (
+    place: Place,
+    from: Place | null = origin,
+    gps: LatLon | null = here,
+  ) => {
     if (startingId) return;
     setStartingId(place.id);
     setSearchError(null);
     setRoutes([]);
     try {
-      const origin = sample
+      const current = sample
         ? DEMO_START
-        : here || (await ride.getCurrentPosition());
-      if (!origin) throw new Error("Location is needed to preview a route.");
-      if (!sample) setHere(origin);
+        : gps || (await ride.getCurrentPosition());
+      const start = sample ? DEMO_START : from?.location || current;
+      if (!start) throw new Error("Location is needed to preview a route.");
+      if (!sample && current) setHere(current);
       setDestination(place);
       setRoutes(
         sample && place.id === KATPADI_PLACES[1].id
           ? [DEMO_ROUTE]
-          : await fetchRoutes(origin, place.location),
+          : await fetchRoutes(start, place.location),
       );
       setSelected(0);
-      await loadHazards(origin);
+      await loadHazards(start);
     } catch (e) {
       setSearchError((e as Error).message);
     }
@@ -99,11 +166,38 @@ export default function NavigateScreen() {
       <AppText color={colors.textMuted}>
         A destination. A little head start.
       </AppText>
+      {!sample && (
+        <View style={styles.fromRow}>
+          <Ionicons name="radio-button-on" size={18} color={colors.text} />
+          <AppText style={{ flex: 1 }} numberOfLines={1}>
+            From: {origin?.name || "My current location"}
+          </AppText>
+          <Button
+            label={field === "from" ? "Cancel" : "Change"}
+            compact
+            variant="ghost"
+            onPress={() => {
+              setField(field === "from" ? "to" : "from");
+              setResults(null);
+              setQuery(field === "from" ? destination?.name || "" : "");
+            }}
+          />
+          <Button
+            label="My location"
+            icon="locate"
+            compact
+            variant="secondary"
+            onPress={() => void useMyLocation()}
+          />
+        </View>
+      )}
       <View style={styles.searchBox}>
         <Ionicons name="search" size={22} color={colors.textMuted} />
         <TextInput
           style={styles.input}
-          placeholder="Search Google Maps"
+          placeholder={
+            field === "from" ? "Search a starting place" : "Search destination"
+          }
           placeholderTextColor={colors.textFaint}
           value={query}
           onChangeText={setQuery}
@@ -139,12 +233,13 @@ export default function NavigateScreen() {
       </AppText>
       <MapCanvas
         riderPosition={sample ? DEMO_START : here}
+        origin={sample ? null : origin?.location || null}
         destination={destination?.location || null}
         potholes={sample ? DEMO_POTHOLES : hazards}
         routeCoordinates={routes[selected]?.geometry || []}
         style={{ height: 260 }}
         onDestination={(p) =>
-          void go({
+          pick({
             id: "pin",
             name: "Selected destination",
             address: "Map pin",
@@ -169,10 +264,11 @@ export default function NavigateScreen() {
         variant="ghost"
         disabled={!!startingId}
         onPress={() => {
-          setSample(false);
-          setRoutes([]);
-          setDestination(null);
-          void ride.getCurrentPosition().then(setHere);
+          if (sample) {
+            setRoutes([]);
+            setDestination(null);
+          }
+          void useMyLocation();
         }}
       />
       {sample && (
@@ -223,7 +319,7 @@ export default function NavigateScreen() {
                   : "") + p.address
               }
               showChevron={false}
-              onPress={startingId ? undefined : () => void go(p)}
+              onPress={startingId ? undefined : () => pick(p)}
               right={
                 startingId === p.id ? (
                   <ActivityIndicator color={colors.accent} />
@@ -247,11 +343,28 @@ export default function NavigateScreen() {
         />
       ))}
       {routes.length > 0 && !sample && (
-        <Button
-          label="Start navigation"
-          loading={ride.phase === "starting"}
-          onPress={() => void ride.startRide(destination, routes[selected])}
-        />
+        <>
+          <Button
+            label="Start navigation"
+            loading={ride.phase === "starting"}
+            onPress={() => void ride.startRide(destination, routes[selected])}
+          />
+          {destination && (
+            <Button
+              label="Navigate in Google Maps"
+              icon="navigate"
+              variant="secondary"
+              onPress={() =>
+                void Linking.openURL(
+                  googleDirectionsUrl(
+                    origin?.location || null,
+                    destination.location,
+                  ),
+                )
+              }
+            />
+          )}
+        </>
       )}
       <AppText variant="small" color={colors.textMuted}>
         {Platform.OS === "web"
@@ -268,6 +381,11 @@ export default function NavigateScreen() {
 }
 
 const styles = StyleSheet.create({
+  fromRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",

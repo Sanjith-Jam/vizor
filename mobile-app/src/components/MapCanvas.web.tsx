@@ -26,6 +26,7 @@ export function MapCanvas(props: MapCanvasProps) {
   const mapData = () => ({
     position: latest.current.riderPosition,
     destination: latest.current.destination,
+    origin: latest.current.origin,
     route: latest.current.routeCoordinates || [],
     potholes: latest.current.potholes || [],
   });
@@ -84,6 +85,7 @@ export function MapCanvas(props: MapCanvasProps) {
   }, [
     props.riderPosition,
     props.destination,
+    props.origin,
     props.routeCoordinates,
     props.potholes,
     ready,
