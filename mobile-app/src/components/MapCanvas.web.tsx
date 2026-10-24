@@ -5,7 +5,7 @@ import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { Ionicons } from "@expo/vector-icons";
 import {
   createGoogleMap,
-  GOOGLE_KATPADI_URL,
+  GOOGLE_INDIA_URL,
   onGoogleMapAuthError,
 } from "../../../shared/googleMapView";
 import {
@@ -127,7 +127,7 @@ export function MapCanvas(props: MapCanvasProps) {
       <div
         ref={host}
         role="region"
-        aria-label="Google Maps of Katpadi"
+        aria-label="Google Maps of India"
         style={{ position: "absolute", inset: 0 }}
       />
       {(!ready || error) && (
@@ -137,7 +137,7 @@ export function MapCanvas(props: MapCanvasProps) {
         >
           <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
             <Ionicons name="map-outline" size={23} color={colors.text} />
-            <AppText weight="bold">Google Maps · Katpadi</AppText>
+            <AppText weight="bold">Google Maps · India</AppText>
           </View>
           <AppText variant="small" color={colors.textMuted}>
             {!key
@@ -149,7 +149,7 @@ export function MapCanvas(props: MapCanvasProps) {
               label="Open Google Maps"
               compact
               variant="secondary"
-              onPress={() => void Linking.openURL(GOOGLE_KATPADI_URL)}
+              onPress={() => void Linking.openURL(GOOGLE_INDIA_URL)}
             />
           )}
           {!!error && (

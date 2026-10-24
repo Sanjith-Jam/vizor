@@ -4,8 +4,8 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { AppText, Button } from "./ui";
 import { colors, radius } from "../theme";
 import type { Point, Pothole } from "../../../shared/contracts";
-import { KATPADI_CENTER } from "../../../shared/katpadi";
-import { HAZARD_COLORS } from "../../../shared/googleMapView";
+import { INDIA_CENTER } from "../../../shared/india";
+import { GOOGLE_INDIA_URL, HAZARD_COLORS } from "../../../shared/googleMapView";
 import {
   createRoadConditionsFeed,
   EMPTY_ROAD_CONDITIONS,
@@ -44,10 +44,11 @@ const regionBounds = (r: {
   west: r.longitude - r.longitudeDelta / 2,
   east: r.longitude + r.longitudeDelta / 2,
 });
+// All of India until the rider's location or a route moves the camera.
 const INITIAL_REGION = {
-  ...coord(KATPADI_CENTER),
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
+  ...coord(INDIA_CENTER),
+  latitudeDelta: 30,
+  longitudeDelta: 30,
 };
 export function MapCanvas({
   riderPosition,
@@ -243,7 +244,7 @@ export function MapCanvas({
       )}
       {(!key || timedOut) && (
         <View style={styles.notice}>
-          <AppText weight="bold">Google Maps · Katpadi</AppText>
+          <AppText weight="bold">Google Maps · India</AppText>
           <AppText variant="small" color={colors.textMuted}>
             {!key
               ? "Connect the Android Maps key and rebuild the app to enable the interactive map."
@@ -254,10 +255,7 @@ export function MapCanvas({
             compact
             variant="secondary"
             onPress={() => {
-              if (!key)
-                void Linking.openURL(
-                  "https://www.google.com/maps/search/?api=1&query=Katpadi%2C+Vellore",
-                );
+              if (!key) void Linking.openURL(GOOGLE_INDIA_URL);
               else {
                 setTimedOut(false);
                 setReady(false);

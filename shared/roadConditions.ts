@@ -83,7 +83,10 @@ const RIDEABLE =
 const POTHOLE_MATCH_M = 20;
 const MAX_POTHOLE_PROBES = 150;
 // Larger views are skipped: Overpass is a shared public service.
-const MAX_SPAN_DEG = 0.25;
+export const ROAD_CONDITIONS_MAX_SPAN_DEG = 0.25;
+export const roadConditionsAvailable = (view: Bounds) =>
+  view.north - view.south <= ROAD_CONDITIONS_MAX_SPAN_DEG &&
+  view.east - view.west <= ROAD_CONDITIONS_MAX_SPAN_DEG;
 // Mapped road features change slowly; public Overpass can take 10–40 s.
 const CACHE_MS = 12 * 60 * 60 * 1000;
 const ENDPOINT_TIMEOUT_MS = 50000;
@@ -333,11 +336,7 @@ export async function fetchRoadConditions(
   potholes: Pothole[],
   signal?: AbortSignal,
 ): Promise<RoadConditions> {
-  if (
-    view.north - view.south > MAX_SPAN_DEG ||
-    view.east - view.west > MAX_SPAN_DEG
-  )
-    return EMPTY_ROAD_CONDITIONS;
+  if (!roadConditionsAvailable(view)) return EMPTY_ROAD_CONDITIONS;
   const bounds = snapBounds(view);
   const query = overpassQuery(bounds, probes(bounds, potholes));
   let hit = cache.get(query);

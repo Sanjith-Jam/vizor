@@ -4,9 +4,12 @@ import { LocateFixed } from "lucide-react";
 import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import {
   createGoogleMap,
+  GOOGLE_INDIA_URL,
   GOOGLE_KATPADI_URL,
   onGoogleMapAuthError,
 } from "../../../shared/googleMapView";
+import { INDIA_BOUNDS } from "../../../shared/india";
+import { KATPADI_BOUNDS } from "../../../shared/katpadi";
 import type { Point, Pothole } from "../../../shared/contracts";
 import type { RoadSegment, SpeedBreaker } from "../../../shared/roadConditions";
 
@@ -39,6 +42,7 @@ export function RoadMap(props: {
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const area = props.demo ? "Katpadi" : "India";
   useEffect(() => {
     if (!key || !host.current) return;
     let cancelled = false;
@@ -69,6 +73,7 @@ export function RoadMap(props: {
           },
           true,
           import.meta.env.VITE_GOOGLE_MAP_ID || "DEMO_MAP_ID",
+          latest.current.demo ? KATPADI_BOUNDS : INDIA_BOUNDS,
         );
         renderer.current.update(latest.current);
         setReady(true);
@@ -88,7 +93,7 @@ export function RoadMap(props: {
       renderer.current?.destroy();
       renderer.current = null;
     };
-  }, [key, attempt]);
+  }, [key, attempt, props.demo]);
   useEffect(() => {
     renderer.current?.update(props);
   }, [
@@ -106,7 +111,7 @@ export function RoadMap(props: {
       <div
         ref={host}
         className="road-map"
-        aria-label="Google Maps of Katpadi. Use destination search or click a road."
+        aria-label={`Google Maps of ${area}. Use destination search or click a road.`}
       />
       {ready && !error && (
         <div className="map-overview">
@@ -125,7 +130,7 @@ export function RoadMap(props: {
             </button>
           )}
           <button onClick={() => renderer.current?.overview()}>
-            View all Katpadi
+            View all {area}
           </button>
         </div>
       )}
@@ -138,11 +143,15 @@ export function RoadMap(props: {
             <>
               <strong>Google Maps</strong>
               <span>
-                Connect the restricted web key to load the interactive Katpadi
+                Connect the restricted web key to load the interactive {area}{" "}
                 map.
               </span>
-              <a href={GOOGLE_KATPADI_URL} target="_blank" rel="noreferrer">
-                Open Katpadi in Google Maps ↗
+              <a
+                href={props.demo ? GOOGLE_KATPADI_URL : GOOGLE_INDIA_URL}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open {area} in Google Maps ↗
               </a>
             </>
           ) : (

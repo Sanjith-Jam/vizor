@@ -29,6 +29,7 @@ import {
   EMPTY_ROAD_CONDITIONS,
   OSM_ATTRIBUTION,
   ROAD_CONDITION_COLORS,
+  roadConditionsAvailable,
   routeSpeedBreakers,
   type Bounds,
 } from "../../../shared/roadConditions";
@@ -55,11 +56,8 @@ import {
   type RoutePlan,
   type Telemetry,
 } from "../../../shared/contracts";
-import {
-  searchKatpadi,
-  KATPADI_CENTER,
-  KATPADI_PLACES,
-} from "../../../shared/katpadi";
+import { searchKatpadi, KATPADI_PLACES } from "../../../shared/katpadi";
+import { reportsAvailable } from "../../../shared/india";
 import { computeProgress } from "../../../mobile-app/src/nav/route";
 import type { Route } from "../../../mobile-app/src/nav/route";
 async function katpadiRoutes(
@@ -204,6 +202,17 @@ export function DashboardPage() {
     roadFeed.current?.request(view, potholes);
   }, [view, potholes]);
   useEffect(() => {
+    if (demo) return;
+    // Centre the India map on the rider when location is already allowed;
+    // otherwise wait for "My location" instead of prompting on page load.
+    void navigator.permissions
+      ?.query({ name: "geolocation" })
+      .then((s) => {
+        if (s.state === "granted") void getPosition().catch(() => {});
+      })
+      .catch(() => {});
+  }, [demo]);
+  useEffect(() => {
     if (demo || !supabase) return;
     const update = () =>
       void supabase!
@@ -219,7 +228,7 @@ export function DashboardPage() {
         "postgres_changes",
         { event: "*", schema: "public", table: "potholes" },
         () => {
-          if (lastBounds.current)
+          if (lastBounds.current && reportsAvailable(lastBounds.current))
             void api<Pothole[]>("map", {
               bounds: lastBounds.current,
               replay: recorded,
@@ -328,7 +337,7 @@ export function DashboardPage() {
       ? searchKatpadi(text)
       : api<Place[]>("places", {
           query: text,
-          near: position || KATPADI_CENTER,
+          near: position,
         });
   const search = () =>
     run(async () => {
@@ -415,7 +424,9 @@ export function DashboardPage() {
   }) => {
     lastBounds.current = b;
     setView(b);
-    if (!demo)
+    // Zoomed out over India: keep the reports already shown until the rider
+    // zooms back in to an area the map service can answer.
+    if (!demo && reportsAvailable(b))
       void api<Pothole[]>("map", { bounds: b, replay: recorded })
         .then(setPotholes)
         .catch((e) => setError(e.message));
@@ -969,6 +980,13 @@ export function DashboardPage() {
                 ))}
               {(road.speedBreakers.length > 0 || road.roads.length > 0) && (
                 <small className="map-attribution">{OSM_ATTRIBUTION}</small>
+              )}
+              {view && !roadConditionsAvailable(view) && (
+                <small className="map-attribution">
+                  Zoom in to a city to see{" "}
+                  {demo || reportsAvailable(view) ? "" : "pothole reports, "}
+                  speed breakers and road conditions
+                </small>
               )}
             </div>
             {demo && (
