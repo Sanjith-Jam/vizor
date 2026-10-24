@@ -17,7 +17,12 @@ export type Bounds = {
   west: number;
   east: number;
 };
-export type SpeedBreaker = Point & { id: string; kind: string };
+export type SpeedBreaker = Point & {
+  id: string;
+  kind: string;
+  /** "rider" for speed breakers the rider marked on this device. */
+  source?: "osm" | "rider";
+};
 export type RoadCondition = "fair" | "poor";
 export type RoadSegment = {
   id: string;
@@ -133,8 +138,11 @@ function probes(bounds: Bounds, potholes: Pothole[]): Point[] {
     .slice(0, MAX_POTHOLE_PROBES);
 }
 
-export function overpassQuery(bounds: Bounds, near: Point[]): string {
-  const box = `${bounds.south},${bounds.west},${bounds.north},${bounds.east}`;
+const boxOf = (b: Bounds) => `${b.south},${b.west},${b.north},${b.east}`;
+
+/** Mapped speed breakers and rough-surface roads in an area. */
+export function tagQuery(bounds: Bounds): string {
+  const box = boxOf(bounds);
   const calming = `^(${Object.keys(SPEED_BREAKER_KINDS).join("|")})$`;
   const smooth = `^(${Object.keys(SMOOTHNESS).join("|")})$`;
   const rough = `^(${Object.keys(SURFACE).join("|")})$`;
@@ -145,6 +153,16 @@ export function overpassQuery(bounds: Bounds, near: Point[]): string {
     `${road}["traffic_calming"~"${calming}"](${box});` +
     `${road}["smoothness"~"${smooth}"](${box});` +
     `${road}["surface"~"${rough}"](${box});` +
+    `);out tags geom;`
+  );
+}
+
+/** Roads passing pothole reports, so report density can rate them. Kept
+ * separate from the tag query so that one stays cached as reports change. */
+export function probeQuery(bounds: Bounds, near: Point[]): string {
+  const box = boxOf(bounds);
+  return (
+    `[out:json][timeout:25];(` +
     near
       .map(
         (p) =>
@@ -338,7 +356,16 @@ export async function fetchRoadConditions(
 ): Promise<RoadConditions> {
   if (!roadConditionsAvailable(view)) return EMPTY_ROAD_CONDITIONS;
   const bounds = snapBounds(view);
-  const query = overpassQuery(bounds, probes(bounds, potholes));
+  const near = probes(bounds, potholes);
+  const [tagged, probed] = await Promise.all([
+    cachedOverpass(tagQuery(bounds)),
+    near.length ? cachedOverpass(probeQuery(bounds, near)) : [],
+  ]);
+  if (signal?.aborted) throw new Error("Road conditions request cancelled.");
+  return parseRoadConditions([...tagged, ...probed], potholes);
+}
+
+function cachedOverpass(query: string): Promise<OsmElement[]> {
   let hit = cache.get(query);
   // The shared request is not tied to one caller's signal, so a view that is
   // panned away from still fills the cache for when the rider returns.
@@ -356,9 +383,7 @@ export async function fetchRoadConditions(
     cache.set(query, hit);
     hit.elements.catch(() => cache.delete(query));
   }
-  const elements = await hit.elements;
-  if (signal?.aborted) throw new Error("Road conditions request cancelled.");
-  return parseRoadConditions(elements, potholes);
+  return hit.elements;
 }
 
 /**

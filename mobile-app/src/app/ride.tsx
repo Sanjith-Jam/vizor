@@ -19,6 +19,8 @@ import { useRide } from "../hooks/useRide";
 import { useSettings } from "../hooks/useSettings";
 import { useHelmetConnection } from "../hooks/useHelmetConnection";
 import { formatDistance, formatDuration, speedValue } from "../nav/geo";
+import { addMarkedBreaker, removeMarkedBreaker } from "../nav/markedBreakers";
+import { shareSpeedBreakerNote } from "../../../shared/roadAlerts";
 import { colors, fonts, radius, spacing } from "../theme";
 
 type RideViewMode = "dashboard" | "map" | "scanner";
@@ -44,6 +46,36 @@ export default function RideScreen() {
       else router.replace("/");
     }
   }, [ride.phase, router]);
+
+  const markBreaker = async () => {
+    const here = ride.position;
+    if (!here) {
+      Alert.alert("No location yet", "Wait for a GPS fix, then try again.");
+      return;
+    }
+    const mark = await addMarkedBreaker(here, ride.roadAhead.speedBreakers);
+    if (!mark) {
+      Alert.alert("Already marked", "A speed breaker is already saved here.");
+      return;
+    }
+    Alert.alert(
+      "Speed breaker saved",
+      "You will be warned here on future rides. Share it as a public OpenStreetMap note so local mappers can add it for everyone?",
+      [
+        { text: "Undo", onPress: () => void removeMarkedBreaker(mark.id) },
+        { text: "Keep private", style: "cancel" },
+        {
+          text: "Share",
+          onPress: () =>
+            void shareSpeedBreakerNote(mark)
+              .then(() =>
+                Alert.alert("Shared", "Thanks! Mappers can now review it."),
+              )
+              .catch((e) => Alert.alert("Not shared", (e as Error).message)),
+        },
+      ],
+    );
+  };
 
   const confirmEnd = () => {
     Alert.alert("End ride?", "Your ride will be saved to history.", [
@@ -243,6 +275,7 @@ export default function RideScreen() {
         <View style={styles.mapWrapper}>
           <MapCanvas
             potholes={sharedHazards}
+            extraRoad={ride.roadAhead}
             riderPosition={ride.position}
             destination={ride.destination?.location ?? null}
             routeCoordinates={ride.route?.geometry}
@@ -323,6 +356,12 @@ export default function RideScreen() {
         ) : null}
       </View>
 
+      <Button
+        label="Mark speed breaker here"
+        icon="flag-outline"
+        variant="secondary"
+        onPress={() => void markBreaker()}
+      />
       <Button
         label="End ride"
         icon="stop-circle"

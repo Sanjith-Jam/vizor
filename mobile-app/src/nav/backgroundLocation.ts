@@ -8,7 +8,21 @@ import { computeProgress } from "./route";
 import { haversineMeters } from "./geo";
 import { parseCheckpoint, type RideCheckpoint } from "./rideCheckpoint";
 import { getHelmetConnection } from "../ble/connectionInstance";
-import { upcomingHazards, type Pothole } from "../../../shared/contracts";
+import type { Pothole } from "../../../shared/contracts";
+import type { RoadConditions } from "../../../shared/roadConditions";
+import {
+  MARKED_SPEED_BREAKERS_KEY,
+  parseMarkedSpeedBreakers,
+  ROUTE_ROAD_KEY,
+  upcomingRoadAlerts,
+  type RoadAlertKind,
+} from "../../../shared/roadAlerts";
+import { RoadAlertType } from "../protocol/roadAlertProtocol";
+const ROAD_ALERT_TYPES: Record<RoadAlertKind, RoadAlertType> = {
+  pothole: RoadAlertType.POTHOLE,
+  speed_breaker: RoadAlertType.SPEED_BREAKER,
+  bad_road: RoadAlertType.BAD_ROAD,
+};
 export const BACKGROUND_LOCATION_TASK = "AR_HELMET_BACKGROUND_LOCATION_TASK";
 export const RIDE_CHECKPOINT_KEY = "vizor.active-ride.v1";
 type Listener = (location: Location.LocationObject) => void;
@@ -148,14 +162,35 @@ async function processDetached(loc: Location.LocationObject) {
         (await AsyncStorage.getItem("vizor.road-hazards.v1")) || "[]",
       );
     } catch {}
-    for (const h of upcomingHazards(state.route.geometry, position, hazards)) {
-      if (!state.warned.includes(h.id)) {
-        state.warned.push(h.id);
+    let road: RoadConditions = { speedBreakers: [], roads: [] };
+    try {
+      road = {
+        speedBreakers: [],
+        roads: [],
+        ...JSON.parse((await AsyncStorage.getItem(ROUTE_ROAD_KEY)) || "{}"),
+      };
+    } catch {}
+    const marked = parseMarkedSpeedBreakers(
+      await AsyncStorage.getItem(MARKED_SPEED_BREAKERS_KEY).catch(() => null),
+    );
+    const alerts = upcomingRoadAlerts(state.route.geometry, position, {
+      potholes: hazards,
+      speedBreakers: [...road.speedBreakers, ...marked],
+      roads: road.roads,
+    });
+    for (const a of alerts) {
+      if (!state.warned.includes(a.id)) {
+        state.warned.push(a.id);
         state.warningUntil = Date.now() + 4000;
         if (state.settings.voicePrompts) {
           Speech.stop();
-          Speech.speak("Reported pothole ahead. Stay aware.");
+          Speech.speak(a.message);
         }
+        if (connection.status === "connected")
+          await connection
+            .sendRoadAlert(ROAD_ALERT_TYPES[a.kind], a.ahead)
+            .catch(() => {});
+        break;
       }
     }
   }

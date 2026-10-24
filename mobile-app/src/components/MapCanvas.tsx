@@ -13,7 +13,9 @@ import {
   ROAD_CONDITION_COLORS,
   SPEED_BREAKER_COLOR,
   type Bounds,
+  type RoadConditions,
 } from "../../../shared/roadConditions";
+import { mergeRoadConditions } from "../../../shared/roadAlerts";
 export interface MapCanvasProps {
   riderPosition: Point | null;
   destination: Point | null;
@@ -23,6 +25,8 @@ export interface MapCanvasProps {
   interactive?: boolean;
   style?: object;
   potholes?: Pothole[];
+  /** Road data beyond the view (whole route, rider-marked speed breakers). */
+  extraRoad?: RoadConditions;
   onDestination?: (point: Point) => void;
   onHazard?: (pothole: Pothole) => void;
   onBounds?: (bounds: {
@@ -58,6 +62,7 @@ export function MapCanvas({
   interactive = true,
   style,
   potholes = [],
+  extraRoad,
   onDestination,
   onHazard,
   onBounds,
@@ -67,7 +72,11 @@ export function MapCanvas({
   const [timedOut, setTimedOut] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [view, setView] = useState<Bounds>(() => regionBounds(INITIAL_REGION));
-  const [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const [viewRoad, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const road = React.useMemo(
+    () => (extraRoad ? mergeRoadConditions(viewRoad, extraRoad) : viewRoad),
+    [viewRoad, extraRoad],
+  );
   const feed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null);
   useEffect(() => {
     feed.current = createRoadConditionsFeed(setRoad);

@@ -13,6 +13,7 @@ import {
   EMPTY_ROAD_CONDITIONS,
   type Bounds,
 } from "../../../shared/roadConditions";
+import { mergeRoadConditions } from "../../../shared/roadAlerts";
 import type { MapCanvasProps } from "./MapCanvas";
 import { AppText, Button } from "./ui";
 import { colors, radius } from "../theme";
@@ -29,7 +30,14 @@ export function MapCanvas(props: MapCanvasProps) {
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [view, setView] = useState<Bounds | null>(null);
-  const [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const [viewRoad, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const road = React.useMemo(
+    () =>
+      props.extraRoad
+        ? mergeRoadConditions(viewRoad, props.extraRoad)
+        : viewRoad,
+    [viewRoad, props.extraRoad],
+  );
   const feed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null);
   useEffect(() => {
     feed.current = createRoadConditionsFeed(setRoad);

@@ -31,6 +31,9 @@
 #define BPI_UART_TX_PIN 19
 #define BPI_UART_BAUDRATE 115200
 #define VISION_ALERT_DURATION_MS 3000
+// How long a map road alert from the phone (reported pothole, speed breaker,
+// bad road) stays on the HUD's top line.
+#define ROAD_ALERT_DURATION_MS 4000
 
 // Banana Pi M4 also forwards SIM7600X GPS fixes on the same UART as
 // "GPS:<lat>:<lon>:<fix>" (see vision-ai/gps_sim7600x.py --serial-out).

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   ArrowUpRight,
@@ -30,9 +30,23 @@ import {
   OSM_ATTRIBUTION,
   ROAD_CONDITION_COLORS,
   roadConditionsAvailable,
-  routeSpeedBreakers,
   type Bounds,
+  type RoadConditions,
+  type SpeedBreaker,
 } from "../../../shared/roadConditions";
+import {
+  describeRoadReport,
+  fetchRouteConditions,
+  markSpeedBreaker,
+  MARKED_SPEED_BREAKERS_KEY,
+  mergeRoadConditions,
+  osmEditUrl,
+  parseMarkedSpeedBreakers,
+  routeRoadReport,
+  shareSpeedBreakerNote,
+  smoothestRoute,
+  upcomingRoadAlerts,
+} from "../../../shared/roadAlerts";
 import {
   queueObservation,
   syncObservations,
@@ -45,7 +59,6 @@ import {
   assistantContext,
   distanceMeters,
   routeHazards,
-  upcomingHazards,
   validateReply,
   validateRoutePlans,
   type AssistantReply,
@@ -74,6 +87,21 @@ export function DashboardPage() {
     [selected, setSelected] = useState<Pothole | null>(null),
     [view, setView] = useState<Bounds | null>(null),
     [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS),
+    [routeRoad, setRouteRoad] = useState<
+      (RoadConditions & { complete: boolean }) | null
+    >(null),
+    [marked, setMarked] = useState<SpeedBreaker[]>(() => {
+      try {
+        return parseMarkedSpeedBreakers(
+          localStorage.getItem(MARKED_SPEED_BREAKERS_KEY),
+        );
+      } catch {
+        return [];
+      }
+    }),
+    [routeRoadFailed, setRouteRoadFailed] = useState(false),
+    [breakerNote, setBreakerNote] = useState<SpeedBreaker | null>(null),
+    [sharedNote, setSharedNote] = useState(""),
     [filter, setFilter] = useState("all"),
     [recorded, setRecorded] = useState(false),
     [pending, setPending] = useState(pendingObservations),
@@ -156,6 +184,23 @@ export function DashboardPage() {
       route && position
         ? computeProgress(route as Route, position, nextStep.current)
         : null;
+  const combined = useMemo(
+      () =>
+        mergeRoadConditions(road, routeRoad || EMPTY_ROAD_CONDITIONS, {
+          speedBreakers: marked,
+          roads: [],
+        }),
+      [road, routeRoad, marked],
+    ),
+    roadData = useMemo(() => ({ ...combined, potholes }), [combined, potholes]);
+  const reports = useMemo(
+      () =>
+        routeRoad
+          ? routes.map((r) => routeRoadReport(r.geometry, roadData))
+          : [],
+      [routes, routeRoad, roadData],
+    ),
+    smoothest = smoothestRoute(reports);
   const speak = (text: string) => {
     if (!muted && "speechSynthesis" in window) {
       speechSynthesis.cancel();
@@ -201,6 +246,31 @@ export function DashboardPage() {
   useEffect(() => {
     roadFeed.current?.request(view, potholes);
   }, [view, potholes]);
+  const latestPotholes = useRef(potholes);
+  latestPotholes.current = potholes;
+  useEffect(() => {
+    // Road data for the whole of every alternative, so scores and ride alerts
+    // do not depend on what the map happens to show.
+    setRouteRoad(null);
+    setRouteRoadFailed(false);
+    if (!routes.length) return;
+    const controller = new AbortController();
+    fetchRouteConditions(
+      routes.map((r) => r.geometry),
+      latestPotholes.current,
+      controller.signal,
+    )
+      .then(setRouteRoad)
+      .catch(() => {
+        if (!controller.signal.aborted) setRouteRoadFailed(true);
+      });
+    return () => controller.abort();
+  }, [routes]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(MARKED_SPEED_BREAKERS_KEY, JSON.stringify(marked));
+    } catch {}
+  }, [marked]);
   useEffect(() => {
     if (demo) return;
     // Centre the India map on the rider when location is already allowed;
@@ -284,13 +354,14 @@ export function DashboardPage() {
     }
     lastPosition.current = position;
     nextStep.current = progress.nextStepIndex;
-    const near = upcomingHazards(route.geometry, position, potholes);
-    const hazard = near.find((h) => !announced.current.has(h.id));
-    if (hazard) {
-      announced.current.add(hazard.id);
+    const alert = upcomingRoadAlerts(route.geometry, position, roadData).find(
+      (a) => !announced.current.has(a.id),
+    );
+    if (alert) {
+      announced.current.add(alert.id);
       warningUntil.current = Date.now() + 4000;
-      speak("Reported pothole ahead. Stay aware.");
-      setReply("Reported pothole ahead. Stay aware.");
+      speak(alert.message);
+      setReply(alert.message);
     }
     const step = route.steps[progress.nextStepIndex];
     if (
@@ -320,7 +391,7 @@ export function DashboardPage() {
         })
         .catch((e) => setError(e.message));
     }
-  }, [position, active, potholes, route]);
+  }, [position, active, potholes, route, routeRoad, marked]);
   const run = async (fn: () => Promise<void>) => {
     setError("");
     setBusy(true);
@@ -373,6 +444,30 @@ export function DashboardPage() {
     setQuery(destination.current?.name || "");
     if (destination.current) void choose(destination.current, place);
   };
+  const markBreakerHere = () =>
+    run(async () => {
+      const here = demo ? position || DEMO_START : await getPosition();
+      if (!demo && (fixAccuracy.current ?? Infinity) > 50)
+        throw new Error(
+          "Location is too approximate to mark a speed breaker. Try again outdoors.",
+        );
+      const next = markSpeedBreaker(marked, here, combined.speedBreakers);
+      if (next === marked) {
+        setReply("A speed breaker is already marked here.");
+        return;
+      }
+      const added = next[next.length - 1];
+      setSharedNote("");
+      setBreakerNote(added);
+      if (demo) {
+        setReply(
+          "Demo preview. Speed breakers marked in the demo are not saved.",
+        );
+        return;
+      }
+      setMarked(next);
+      setReply("Speed breaker saved on this device. You will be warned here.");
+    });
   const useMyLocation = async () => {
     const point = await getPosition();
     setOrigin(null);
@@ -754,15 +849,17 @@ export function DashboardPage() {
                   <p>
                     {routeHazards(r.geometry, potholes).length} reported hazards
                     on route
-                    {(() => {
-                      const n = routeSpeedBreakers(
-                        r.geometry,
-                        road.speedBreakers,
-                      ).length;
-                      return n
-                        ? ` · ${n} speed breaker${n === 1 ? "" : "s"}`
-                        : "";
-                    })()}
+                  </p>
+                  <p className="route-road">
+                    {smoothest === i && (
+                      <span className="route-badge">Smoothest</span>
+                    )}
+                    {reports[i]
+                      ? describeRoadReport(reports[i]) +
+                        (routeRoad?.complete ? "" : " (partial route)")
+                      : routeRoadFailed
+                        ? "Road conditions unavailable right now"
+                        : "Checking speed breakers and road surface…"}
                   </p>
                 </button>
               ))
@@ -866,6 +963,12 @@ export function DashboardPage() {
               >
                 Report here
               </button>
+              <button
+                className="filter-button"
+                onClick={() => void markBreakerHere()}
+              >
+                Speed breaker here
+              </button>
               {!demo && (
                 <button
                   className={`filter-button ${recorded ? "active" : ""}`}
@@ -911,14 +1014,18 @@ export function DashboardPage() {
             <RoadMap
               demo={demo}
               potholes={visible}
-              speedBreakers={road.speedBreakers}
-              roads={road.roads}
+              speedBreakers={combined.speedBreakers}
+              roads={combined.roads}
               route={route?.geometry || []}
               position={position}
               destination={destination.current?.location}
               origin={origin?.location}
               onLocate={useMyLocation}
               onSelect={setSelected}
+              onSpeedBreaker={(s) => {
+                setSharedNote("");
+                setBreakerNote(s);
+              }}
               onDestination={(p) =>
                 void pick({
                   id: "pin",
@@ -949,14 +1056,14 @@ export function DashboardPage() {
                     {n} {status}
                   </span>
                 ))}
-              {road.speedBreakers.length > 0 && (
+              {combined.speedBreakers.length > 0 && (
                 <span>
                   <b
                     className="speed-breaker-key"
                     dangerouslySetInnerHTML={{ __html: speedBreakerIcon(14) }}
                   />
-                  {road.speedBreakers.length} speed breaker
-                  {road.speedBreakers.length === 1 ? "" : "s"}
+                  {combined.speedBreakers.length} speed breaker
+                  {combined.speedBreakers.length === 1 ? "" : "s"}
                 </span>
               )}
               {(["poor", "fair"] as const)
@@ -964,7 +1071,7 @@ export function DashboardPage() {
                   (c) =>
                     [
                       c,
-                      road.roads.filter((r) => r.condition === c).length,
+                      combined.roads.filter((r) => r.condition === c).length,
                     ] as const,
                 )
                 .filter(([, n]) => n > 0)
@@ -978,7 +1085,8 @@ export function DashboardPage() {
                     {n === 1 ? "" : "s"}
                   </span>
                 ))}
-              {(road.speedBreakers.length > 0 || road.roads.length > 0) && (
+              {(combined.speedBreakers.length > 0 ||
+                combined.roads.length > 0) && (
                 <small className="map-attribution">{OSM_ATTRIBUTION}</small>
               )}
               {view && !roadConditionsAvailable(view) && (
@@ -1025,6 +1133,67 @@ export function DashboardPage() {
                   ? "RECORDED DETECTIONS · REPLAY LOCATIONS ARE NOT LIVE REPORTS"
                   : "GOOGLE MAPS · PROJECT HAZARDS ARE APPROXIMATE OBSERVATIONS"}
             </div>
+            {breakerNote && (
+              <div className="map-toast" role="status">
+                <span>
+                  <strong>{breakerNote.kind}</strong>
+                  {breakerNote.source !== "rider"
+                    ? " · mapped on OpenStreetMap"
+                    : demo
+                      ? " · demo preview, not saved"
+                      : " · saved on this device"}
+                </span>
+                {breakerNote.source === "rider" && !demo && (
+                  <button
+                    disabled={busy || !!sharedNote}
+                    onClick={() =>
+                      run(async () => {
+                        if (
+                          !confirm(
+                            "Share this speed breaker as a public OpenStreetMap note? Local mappers can then add it to the map for everyone. The note shows this location.",
+                          )
+                        )
+                          return;
+                        setSharedNote(await shareSpeedBreakerNote(breakerNote));
+                      })
+                    }
+                  >
+                    {sharedNote ? "Shared" : "Share on OpenStreetMap"}
+                  </button>
+                )}
+                {sharedNote && (
+                  <a href={sharedNote} target="_blank" rel="noreferrer">
+                    View note ↗
+                  </a>
+                )}
+                {breakerNote.source === "rider" ? (
+                  <button
+                    onClick={() => {
+                      setMarked((m) =>
+                        m.filter((s) => s.id !== breakerNote.id),
+                      );
+                      setBreakerNote(null);
+                    }}
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <a
+                    href={osmEditUrl(breakerNote)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Edit on OpenStreetMap ↗
+                  </a>
+                )}
+                <button
+                  aria-label="Close speed breaker details"
+                  onClick={() => setBreakerNote(null)}
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
             {selected && (
               <aside className="hazard-drawer" aria-label="Hazard details">
                 <div className="drawer-title">

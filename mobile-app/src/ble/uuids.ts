@@ -19,5 +19,8 @@ export const CALL_CHAR_UUID = "77c1bfdd-ed70-4894-b5c5-7e973c7793ec";
 /** Notify. Helmet -> app: [Action: 1B]. */
 export const CALL_ACTION_CHAR_UUID = "1f221721-edb9-4bd8-b18b-df997197e3d0";
 
+/** Write. App -> helmet: [Type: 1B][DistanceMeters: 2B big-endian]. Optional on older firmware. */
+export const ROAD_ALERT_CHAR_UUID = "6e3c1a52-7d4b-4f0e-9a8e-3b2f5c1d9e47";
+
 /** Notify: [1 = toggle push-to-talk]. Optional on older firmware. */
 export const PTT_CHAR_UUID = "f2f8a3d0-0b35-4c68-a951-5cdf7473f001";

@@ -22,6 +22,7 @@ BLECharacteristic* pHazardCharacteristic = nullptr;
 BLECharacteristic* pCallCharacteristic = nullptr;
 BLECharacteristic* pCallActionCharacteristic = nullptr;
 BLECharacteristic* pPttCharacteristic = nullptr;
+BLECharacteristic* pRoadAlertCharacteristic = nullptr;
 
 bool deviceConnected = false;
 
@@ -65,6 +66,12 @@ uint16_t currentTurnDistance = 0;
 bool visionAlertActive = false;
 unsigned long visionAlertStartTime = 0;
 AvoidanceDirection currentAvoidanceDirection = AvoidanceDirection::CENTER;
+
+// Map road alert from the phone: 1 reported pothole, 2 speed breaker, 3 bad road.
+bool roadAlertActive = false;
+unsigned long roadAlertStartTime = 0;
+uint8_t roadAlertType = 0;
+uint16_t roadAlertDistance = 0;
 
 // GPS State (Banana Pi M4 / SIM7600X, forwarded as "GPS:<lat>:<lon>:<fix>")
 bool gpsFixValid = false;
@@ -111,6 +118,11 @@ unsigned long lastLightReadTime = 0;
 // ESP32 -> phone notify: [Action: 1B], sent when the rider accepts/declines via PTT
 #define CALL_ACTION_CHAR_UUID "1f221721-edb9-4bd8-b18b-df997197e3d0"
 #define PTT_CHAR_UUID "f2f8a3d0-0b35-4c68-a951-5cdf7473f001"
+// Phone -> ESP32 write: [Type: 1B][DistanceMeters: 2B big-endian] map road alerts
+#define ROAD_ALERT_CHAR_UUID "6e3c1a52-7d4b-4f0e-9a8e-3b2f5c1d9e47"
+// Each characteristic takes 2 handles (+1 per descriptor); the default 15
+// handles per service no longer fit them all.
+#define SERVICE_NUM_HANDLES 30
 
 class ServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) override {
@@ -143,6 +155,28 @@ class NavDataCallback : public BLECharacteristicCallbacks {
         currentTurnDistance =
             (static_cast<uint16_t>(static_cast<uint8_t>(rxValue[1])) << 8) |
             static_cast<uint8_t>(rxValue[2]);
+    }
+};
+
+class RoadAlertCallback : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pCharacteristic) override {
+        // Compact packet: [type: 1 byte][distance metres: 2 bytes, big-endian].
+        auto rxValue = pCharacteristic->getValue();
+        if (rxValue.length() != 3) {
+            Serial.println("Ignored invalid road alert packet (expected 3 bytes).");
+            return;
+        }
+        uint8_t type = static_cast<uint8_t>(rxValue[0]);
+        if (type < 1 || type > 3) {
+            Serial.println("Ignored road alert with unknown type.");
+            return;
+        }
+        roadAlertType = type;
+        roadAlertDistance =
+            (static_cast<uint16_t>(static_cast<uint8_t>(rxValue[1])) << 8) |
+            static_cast<uint8_t>(rxValue[2]);
+        roadAlertStartTime = millis();
+        roadAlertActive = true;
     }
 };
 
@@ -320,6 +354,15 @@ void initDisplay() {
     display.display();
 }
 
+// Fits the 21-character top line, e.g. "! SPEED BREAKER 120m".
+String roadAlertLabel(uint8_t type, uint16_t distanceMeters) {
+    String label = type == 2 ? "! SPEED BREAKER" : type == 3 ? "! BAD ROAD" : "! POTHOLE";
+    if (distanceMeters > 0) {
+        label += " " + String(distanceMeters) + "m";
+    }
+    return label;
+}
+
 void renderHUD(NavigationDirection direction, uint16_t distanceMeters) {
     display.clearDisplay();
 
@@ -352,6 +395,21 @@ void renderHUD(NavigationDirection direction, uint16_t distanceMeters) {
         display.setTextSize(1);
         display.setCursor(0,0);
         display.print(F("! POTHOLE AHEAD"));
+        drawDirectionArrow(direction, 8, 21, 27);
+        display.setCursor(46,24);
+        display.print(navigationLabel(direction));
+        display.setCursor(46,41);
+        display.print(String(distanceMeters) + " m");
+        display.display();
+        return;
+    }
+
+    // Map alerts from the phone use the same layout; a live camera detection
+    // above takes precedence over them.
+    if (roadAlertActive) {
+        display.setTextSize(1);
+        display.setCursor(0,0);
+        display.print(roadAlertLabel(roadAlertType, roadAlertDistance));
         drawDirectionArrow(direction, 8, 21, 27);
         display.setCursor(46,24);
         display.print(navigationLabel(direction));
@@ -420,7 +478,7 @@ void setup() {
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks());
 
-    BLEService* pService = pServer->createService(SERVICE_UUID);
+    BLEService* pService = pServer->createService(BLEUUID(SERVICE_UUID), SERVICE_NUM_HANDLES);
 
     pNavCharacteristic = pService->createCharacteristic(
         NAV_CHAR_UUID,
@@ -448,6 +506,12 @@ void setup() {
 
     pPttCharacteristic = pService->createCharacteristic(PTT_CHAR_UUID, BLECharacteristic::PROPERTY_NOTIFY);
     pPttCharacteristic->addDescriptor(new BLE2902());
+
+    pRoadAlertCharacteristic = pService->createCharacteristic(
+        ROAD_ALERT_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE
+    );
+    pRoadAlertCharacteristic->setCallbacks(new RoadAlertCallback());
     pService->start();
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SERVICE_UUID);
@@ -490,6 +554,11 @@ void loop() {
     // Auto-clear vision alert after timeout
     if (visionAlertActive && (now - visionAlertStartTime > VISION_ALERT_DURATION_MS)) {
         visionAlertActive = false;
+    }
+
+    // millis(), not `now`: the BLE callback may have set the start after `now`.
+    if (roadAlertActive && (millis() - roadAlertStartTime > ROAD_ALERT_DURATION_MS)) {
+        roadAlertActive = false;
     }
 
     // Drop a stale GPS fix so the HUD indicator reflects a lost signal

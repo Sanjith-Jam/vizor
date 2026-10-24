@@ -2,11 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pothole } from "./contracts.ts";
 import {
-  overpassQuery,
+  probeQuery,
   parseRoadConditions,
   rateRoad,
   routeSpeedBreakers,
   snapBounds,
+  tagQuery,
 } from "./roadConditions.ts";
 
 const road = [
@@ -107,11 +108,13 @@ test("query covers the snapped view and probes roads around active potholes", ()
     east: 79.149,
   });
   assert.deepEqual(b, { south: 12.94, west: 79.1, north: 13, east: 79.16 });
-  const q = overpassQuery(b, [{ lat: 12.97, lon: 79.141 }]);
-  assert.match(q, /node\["traffic_calming"~"\^\(yes\|bump/);
-  assert.match(q, /\(12\.94,79\.1,13,79\.16\)/);
-  assert.match(q, /\(around:20,12\.97,79\.141\)/);
-  assert.match(q, /out tags geom;$/);
+  const tags = tagQuery(b);
+  assert.match(tags, /node\["traffic_calming"~"\^\(yes\|bump/);
+  assert.match(tags, /\(12\.94,79\.1,13,79\.16\)/);
+  assert.match(tags, /out tags geom;$/);
+  const probe = probeQuery(b, [{ lat: 12.97, lon: 79.141 }]);
+  assert.match(probe, /\(around:20,12\.97,79\.141\)/);
+  assert.doesNotMatch(probe, /traffic_calming/);
 });
 
 test("route speed breakers are those within 20 m of the line", () => {

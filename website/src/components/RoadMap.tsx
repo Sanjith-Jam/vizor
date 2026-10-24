@@ -27,6 +27,7 @@ export function RoadMap(props: {
   origin?: Point | null;
   onLocate?: () => Promise<Point>;
   onSelect: (p: Pothole) => void;
+  onSpeedBreaker?: (s: SpeedBreaker) => void;
   onDestination: (p: Point) => void;
   onBounds: (bounds: {
     south: number;
@@ -69,6 +70,7 @@ export function RoadMap(props: {
           {
             onDestination: (p) => latest.current.onDestination(p),
             onHazard: (p) => latest.current.onSelect(p),
+            onSpeedBreaker: (s) => latest.current.onSpeedBreaker?.(s),
             onBounds: (b) => latest.current.onBounds(b),
           },
           true,

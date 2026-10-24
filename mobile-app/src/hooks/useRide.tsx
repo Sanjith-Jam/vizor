@@ -20,7 +20,19 @@ import {
 } from "../nav/route";
 import { formatDistance, haversineMeters, type LatLon } from "../nav/geo";
 import { useCloud } from "../cloud/useCloud";
-import { upcomingHazards } from "../../../shared/contracts";
+import {
+  EMPTY_ROAD_CONDITIONS,
+  type RoadConditions,
+} from "../../../shared/roadConditions";
+import {
+  fetchRouteConditions,
+  mergeRoadConditions,
+  ROUTE_ROAD_KEY,
+  upcomingRoadAlerts,
+  type RoadAlertKind,
+} from "../../../shared/roadAlerts";
+import { RoadAlertType } from "../protocol/roadAlertProtocol";
+import { useMarkedBreakers } from "../nav/markedBreakers";
 import { NavigationDirection } from "../protocol/navigationProtocol";
 import { useHelmetConnection } from "./useHelmetConnection";
 import { useHistory } from "./useHistory";
@@ -53,6 +65,8 @@ interface RideContextValue {
   error: string | null;
   /** True when location permission was permanently denied (needs system settings). */
   locationBlocked: boolean;
+  /** Speed breakers and rough roads along the route, plus rider marks. */
+  roadAhead: RoadConditions;
   /** HUD frame currently shown on the helmet (or that would be, if connected). */
   hudFrame: { direction: NavigationDirection; distance: number } | null;
   startRide: (destination: Place | null, preview?: Route) => Promise<void>;
@@ -68,6 +82,11 @@ const SEND_INTERVAL_MS = 2000;
 const SEND_MIN_DELTA_M = 10;
 const REROUTE_COOLDOWN_MS = 15_000;
 const MIN_ACCURACY_M = 50;
+const ROAD_ALERT_TYPES: Record<RoadAlertKind, RoadAlertType> = {
+  pothole: RoadAlertType.POTHOLE,
+  speed_breaker: RoadAlertType.SPEED_BREAKER,
+  bad_road: RoadAlertType.BAD_ROAD,
+};
 
 function speak(enabled: boolean, text: string) {
   if (enabled) {
@@ -99,6 +118,36 @@ export function RideProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [locationBlocked, setLocationBlocked] = useState(false);
   const [hudFrame, setHudFrame] = useState<RideContextValue["hudFrame"]>(null);
+  const [routeRoad, setRouteRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const marked = useMarkedBreakers();
+  const roadAhead = React.useMemo(
+    () => mergeRoadConditions(routeRoad, { speedBreakers: marked, roads: [] }),
+    [routeRoad, marked],
+  );
+  const roadAheadRef = useRef(roadAhead);
+  roadAheadRef.current = roadAhead;
+  useEffect(() => {
+    // Whole-route road data; the background task reads the saved copy.
+    setRouteRoad(EMPTY_ROAD_CONDITIONS);
+    if (!route) {
+      void AsyncStorage.removeItem(ROUTE_ROAD_KEY).catch(() => undefined);
+      return;
+    }
+    const controller = new AbortController();
+    fetchRouteConditions(
+      [route.geometry],
+      roadRef.current.hazards,
+      controller.signal,
+    )
+      .then((data) => {
+        setRouteRoad(data);
+        void AsyncStorage.setItem(ROUTE_ROAD_KEY, JSON.stringify(data)).catch(
+          () => undefined,
+        );
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [route]);
 
   // Mutable ride state read inside the location callback.
   const r = useRef({
@@ -248,18 +297,21 @@ export function RideProvider({ children }: { children: React.ReactNode }) {
 
       if (accuracy > MIN_ACCURACY_M) return;
       const p = computeProgress(s.route, pos, s.nextStep);
-      const ahead = upcomingHazards(
-        s.route.geometry,
-        pos,
-        roadRef.current.hazards,
-      ).find((h) => !warned.current.has(h.id));
+      const ahead = upcomingRoadAlerts(s.route.geometry, pos, {
+        ...roadAheadRef.current,
+        potholes: roadRef.current.hazards,
+      }).find((a) => !warned.current.has(a.id));
       if (ahead) {
         warned.current.add(ahead.id);
         warningUntil.current = Date.now() + 4000;
-        speak(cfg.voicePrompts, "Reported pothole ahead. Stay aware.");
+        speak(cfg.voicePrompts, ahead.message);
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Warning,
         );
+        if (connectedRef.current)
+          connection
+            .sendRoadAlert(ROAD_ALERT_TYPES[ahead.kind], ahead.ahead)
+            .catch(() => undefined);
         return;
       }
       if (p.nextStepIndex !== s.nextStep) {
@@ -548,6 +600,7 @@ export function RideProvider({ children }: { children: React.ReactNode }) {
         rerouting,
         error,
         locationBlocked,
+        roadAhead,
         hudFrame,
         startRide,
         endRide,

@@ -6,6 +6,7 @@ import {
   type RoadSegment,
   type SpeedBreaker,
 } from "./roadConditions";
+import { osmEditUrl } from "./roadAlerts";
 
 export const GOOGLE_KATPADI_URL =
   "https://www.google.com/maps/search/?api=1&query=Katpadi%2C+Vellore";
@@ -35,6 +36,7 @@ export type GoogleMapData = {
 export type GoogleMapCallbacks = {
   onDestination?: (point: Point) => void;
   onHazard?: (pothole: Pothole) => void;
+  onSpeedBreaker?: (speedBreaker: SpeedBreaker) => void;
   onBounds?: (bounds: {
     south: number;
     north: number;
@@ -52,8 +54,8 @@ export const HAZARD_COLORS: Record<Pothole["status"], string> = {
 const dot = (fill: string, size: number, ring = "#FFFFFF", border = 2) =>
   `<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:${border}px solid ${ring};box-shadow:0 1px 3px #0005"></span>`;
 /** Striped bar, like a painted speed breaker; shared by the website legend. */
-export const speedBreakerIcon = (width = 18) =>
-  `<span style="display:block;width:${width}px;height:${Math.round(width * 0.55)}px;border-radius:3px;border:1.5px solid #1F1F1F;background:repeating-linear-gradient(135deg,${SPEED_BREAKER_COLOR} 0 4px,#1F1F1F 4px 7px);box-shadow:0 1px 3px #0005"></span>`;
+export const speedBreakerIcon = (width = 18, rider = false) =>
+  `<span style="display:block;width:${width}px;height:${Math.round(width * 0.55)}px;border-radius:3px;border:1.5px solid ${rider ? "#1A73E8" : "#1F1F1F"};background:repeating-linear-gradient(135deg,${SPEED_BREAKER_COLOR} 0 4px,#1F1F1F 4px 7px);box-shadow:0 1px 3px #0005"></span>`;
 const escapeHtml = (v: string) =>
   v.replace(
     /[&<>"']/g,
@@ -189,7 +191,13 @@ export function createGoogleMap(
         () => callbacks.onHazard?.(p),
       );
     for (const s of data.speedBreakers || [])
-      addMarker(`bump-${s.id}`, s, s.kind, speedBreakerIcon());
+      addMarker(
+        `bump-${s.id}`,
+        s,
+        s.source === "rider" ? `${s.kind} (you marked)` : s.kind,
+        speedBreakerIcon(18, s.source === "rider"),
+        callbacks.onSpeedBreaker && (() => callbacks.onSpeedBreaker?.(s)),
+      );
     if (data.origin)
       addMarker(
         "origin",
@@ -244,7 +252,7 @@ export function createGoogleMap(
         google.maps.event.clearListeners(line, "click");
         line.addListener("click", (event: google.maps.PolyMouseEvent) => {
           roadInfo.setContent(
-            `<div style="font:13px/1.4 system-ui,sans-serif;max-width:220px"><strong>${escapeHtml(road.name)}</strong><br>${road.condition === "poor" ? "Bad road" : "Rough road"} · ${escapeHtml(road.reasons.join(", "))}</div>`,
+            `<div style="font:13px/1.4 system-ui,sans-serif;max-width:220px"><strong>${escapeHtml(road.name)}</strong><br>${road.condition === "poor" ? "Bad road" : "Rough road"} · ${escapeHtml(road.reasons.join(", "))}<br><a href="${osmEditUrl({ lat: event.latLng?.lat() ?? road.path[0].lat, lon: event.latLng?.lng() ?? road.path[0].lon })}" target="_blank" rel="noreferrer">Fix on OpenStreetMap ↗</a></div>`,
           );
           roadInfo.setPosition(event.latLng);
           roadInfo.open({ map });

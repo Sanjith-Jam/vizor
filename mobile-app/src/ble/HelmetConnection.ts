@@ -12,7 +12,12 @@ import {
   CALL_CHAR_UUID,
   CALL_ACTION_CHAR_UUID,
   PTT_CHAR_UUID,
+  ROAD_ALERT_CHAR_UUID,
 } from "./uuids";
+import {
+  encodeRoadAlertPacket,
+  type RoadAlertType,
+} from "../protocol/roadAlertProtocol";
 import { requestBlePermissions, type PermissionResult } from "./permissions";
 import {
   friendlyBleError,
@@ -30,11 +35,7 @@ import type { HazardEvent } from "../protocol/hazardProtocol";
 import { decodeHazardEvent } from "../protocol/hazardProtocol";
 
 export type ConnectionStatus =
-  | "disconnected"
-  | "scanning"
-  | "connecting"
-  | "connected"
-  | "reconnecting";
+  "disconnected" | "scanning" | "connecting" | "connected" | "reconnecting";
 
 export interface ScannedHelmet {
   id: string;
@@ -50,7 +51,7 @@ export interface ConnectionError {
 export interface PacketLogEntry {
   at: number;
   direction: "tx" | "rx";
-  channel: "nav" | "call" | "hazard" | "call-action";
+  channel: "nav" | "call" | "hazard" | "call-action" | "road";
   hex: string;
 }
 
@@ -103,6 +104,7 @@ export class HelmetConnection {
   private scanTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
+  private supportsRoadAlerts = false;
   /** Set by an explicit disconnect() so the drop isn't treated as a lost link. */
   private userDisconnected = false;
 
@@ -303,6 +305,9 @@ export class HelmetConnection {
 
     const characteristics =
       await device.characteristicsForService(SERVICE_UUID);
+    this.supportsRoadAlerts = characteristics.some(
+      (c) => c.uuid.toLowerCase() === ROAD_ALERT_CHAR_UUID,
+    );
     if (characteristics.some((c) => c.uuid.toLowerCase() === PTT_CHAR_UUID)) {
       this.subscriptions.push(
         device.monitorCharacteristicForService(
@@ -397,6 +402,19 @@ export class HelmetConnection {
       NAV_CHAR_UUID,
       "nav",
       encodeNavigationPacket(direction, distanceMeters),
+    );
+  }
+
+  /** Shows a map hazard on the HUD; a no-op on firmware without the channel. */
+  async sendRoadAlert(
+    type: RoadAlertType,
+    distanceMeters: number,
+  ): Promise<void> {
+    if (!this.supportsRoadAlerts) return;
+    await this.write(
+      ROAD_ALERT_CHAR_UUID,
+      "road",
+      encodeRoadAlertPacket(type, distanceMeters),
     );
   }
 

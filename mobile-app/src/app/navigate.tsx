@@ -32,6 +32,14 @@ import { routeHazards } from "../../../shared/contracts";
 import type { Route } from "../nav/route";
 import { DEMO_START, DEMO_ROUTE, DEMO_POTHOLES } from "../../../shared/demo";
 import { KATPADI_PLACES } from "../../../shared/katpadi";
+import {
+  describeRoadReport,
+  mergeRoadConditions,
+  routeRoadReport,
+  smoothestRoute,
+} from "../../../shared/roadAlerts";
+import { useRouteConditions } from "../nav/useRouteConditions";
+import { useMarkedBreakers } from "../nav/markedBreakers";
 import { googleDirectionsUrl } from "../../../shared/googleMapView";
 import { MapCanvas } from "../components/MapCanvas";
 import { colors, fonts, radius, spacing, TOUCH_TARGET } from "../theme";
@@ -58,6 +66,36 @@ export default function NavigateScreen() {
   const [startingId, setStartingId] = useState<string | null>(null);
   const [origin, setOrigin] = useState<Place | null>(null);
   const [field, setField] = useState<"from" | "to">("to");
+  const marked = useMarkedBreakers();
+  const routePaths = React.useMemo(
+    () => routes.map((r) => r.geometry),
+    [routes],
+  );
+  const routeRoad = useRouteConditions(
+    routePaths,
+    sample ? DEMO_POTHOLES : hazards,
+  );
+  const extraRoad = React.useMemo(
+    () =>
+      mergeRoadConditions(routeRoad.data || { speedBreakers: [], roads: [] }, {
+        speedBreakers: marked,
+        roads: [],
+      }),
+    [routeRoad.data, marked],
+  );
+  const reports = React.useMemo(
+    () =>
+      routeRoad.data
+        ? routePaths.map((path) =>
+            routeRoadReport(path, {
+              ...extraRoad,
+              potholes: sample ? DEMO_POTHOLES : hazards,
+            }),
+          )
+        : [],
+    [routePaths, routeRoad.data, extraRoad, sample, hazards],
+  );
+  const smoothest = smoothestRoute(reports);
 
   const search = async () => {
     const q = query.trim();
@@ -236,6 +274,7 @@ export default function NavigateScreen() {
         origin={sample ? null : origin?.location || null}
         destination={destination?.location || null}
         potholes={sample ? DEMO_POTHOLES : hazards}
+        extraRoad={extraRoad}
         routeCoordinates={routes[selected]?.geometry || []}
         style={{ height: 260 }}
         onDestination={(p) =>
@@ -337,8 +376,15 @@ export default function NavigateScreen() {
         <ListRow
           key={i}
           icon={i === selected ? "radio-button-on" : "radio-button-off"}
-          title={`${Math.ceil(r.duration / 60)} min · ${formatDistance(r.distance, settings.units)}`}
-          subtitle={`${routeHazards(r.geometry, sample ? DEMO_POTHOLES : hazards).length} reported hazards along this route`}
+          title={`${Math.ceil(r.duration / 60)} min · ${formatDistance(r.distance, settings.units)}${smoothest === i ? " · Smoothest" : ""}`}
+          subtitle={`${routeHazards(r.geometry, sample ? DEMO_POTHOLES : hazards).length} reported hazards · ${
+            reports[i]
+              ? describeRoadReport(reports[i]) +
+                (routeRoad.data?.complete ? "" : " (partial route)")
+              : routeRoad.failed
+                ? "road conditions unavailable"
+                : "checking speed breakers…"
+          }`}
           onPress={() => setSelected(i)}
         />
       ))}
