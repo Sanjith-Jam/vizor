@@ -178,7 +178,7 @@ export default function RideHome() {
               </AppText>
             </View>
             <AppText variant="small" color={colors.onDarkMuted}>
-              Katpadi, IN
+              India
             </AppText>
           </View>
         </Card>
@@ -364,7 +364,7 @@ export default function RideHome() {
       <RideActivity rides={rides} units={settings.units} />
       <Card><AppText variant="heading">From road to record.</AppText><AppText variant="small" color={colors.textMuted}>Upload a photo. See real Banana Pi findings and the same database records on your website.</AppText><Button label="Connected photo demo" icon="images-outline" onPress={() => router.push("/live-demo")} /></Card>
       <Entrance delay={240}>
-        <SectionTitle>around Katpadi.</SectionTitle>
+        <SectionTitle>across India.</SectionTitle>
         <View style={styles.mapCard}>
           <View style={styles.mapPreview}>
             <View style={styles.mapIcon}>
@@ -372,7 +372,7 @@ export default function RideHome() {
             </View>
             <View style={styles.mapCopy}>
               <AppText variant="caption" weight="bold" color={colors.textMuted}>
-                GOOGLE MAPS · KATPADI
+                GOOGLE MAPS · INDIA
               </AppText>
               <AppText weight="semibold">Routes & nearby road reports</AppText>
             </View>

@@ -31,7 +31,7 @@ import { useCloud } from "../cloud/useCloud";
 import { routeHazards } from "../../../shared/contracts";
 import type { Route } from "../nav/route";
 import { DEMO_START, DEMO_ROUTE, DEMO_POTHOLES } from "../../../shared/demo";
-import { KATPADI_CENTER, KATPADI_PLACES } from "../../../shared/katpadi";
+import { KATPADI_PLACES } from "../../../shared/katpadi";
 import { googleDirectionsUrl } from "../../../shared/googleMapView";
 import { MapCanvas } from "../components/MapCanvas";
 import { colors, fonts, radius, spacing, TOUCH_TARGET } from "../theme";
@@ -65,7 +65,7 @@ export default function NavigateScreen() {
     setSearching(true);
     setSearchError(null);
     try {
-      setResults(await searchPlaces(q, here || KATPADI_CENTER));
+      setResults(await searchPlaces(q, here));
     } catch (e) {
       setSearchError((e as Error).message);
     } finally {
@@ -101,12 +101,12 @@ export default function NavigateScreen() {
       setSearchError(null);
       try {
         const from = params.origin
-          ? (await searchPlaces(params.origin, here || KATPADI_CENTER))[0]
+          ? (await searchPlaces(params.origin, here))[0]
           : null;
         if (params.origin && !from)
           throw new Error(`Couldn't find “${params.origin}”.`);
         setOrigin(from);
-        const found = await searchPlaces(params.query!, here || KATPADI_CENTER);
+        const found = await searchPlaces(params.query!, here);
         setResults(found);
         if (found[0]) await go(found[0], from);
       } catch (e) {
@@ -303,7 +303,7 @@ export default function NavigateScreen() {
         <EmptyState
           icon="sad-outline"
           title="No places found"
-          message="Try VIT or Katpadi. You can also long-press a road on the map."
+          message="Try a landmark, area or city. You can also long-press a road on the map."
         />
       ) : (
         <>

@@ -1,8 +1,16 @@
 import type { Point, Pothole } from "./contracts";
-import { KATPADI_BOUNDS, KATPADI_CENTER } from "./katpadi";
+import { INDIA_BOUNDS } from "./india";
+import {
+  ROAD_CONDITION_COLORS,
+  SPEED_BREAKER_COLOR,
+  type RoadSegment,
+  type SpeedBreaker,
+} from "./roadConditions";
 
 export const GOOGLE_KATPADI_URL =
   "https://www.google.com/maps/search/?api=1&query=Katpadi%2C+Vellore";
+export const GOOGLE_INDIA_URL =
+  "https://www.google.com/maps/search/?api=1&query=India";
 /** Hands the route to the Google Maps app/site for live turn-by-turn. A null
  * origin lets Google Maps use the device's current location. */
 export function googleDirectionsUrl(origin: Point | null, destination: Point) {
@@ -21,6 +29,8 @@ export type GoogleMapData = {
   destination?: Point | null;
   route: Point[];
   potholes: Pothole[];
+  speedBreakers?: SpeedBreaker[];
+  roads?: RoadSegment[];
 };
 export type GoogleMapCallbacks = {
   onDestination?: (point: Point) => void;
@@ -41,6 +51,17 @@ export const HAZARD_COLORS: Record<Pothole["status"], string> = {
 };
 const dot = (fill: string, size: number, ring = "#FFFFFF", border = 2) =>
   `<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:${border}px solid ${ring};box-shadow:0 1px 3px #0005"></span>`;
+/** Striped bar, like a painted speed breaker; shared by the website legend. */
+export const speedBreakerIcon = (width = 18) =>
+  `<span style="display:block;width:${width}px;height:${Math.round(width * 0.55)}px;border-radius:3px;border:1.5px solid #1F1F1F;background:repeating-linear-gradient(135deg,${SPEED_BREAKER_COLOR} 0 4px,#1F1F1F 4px 7px);box-shadow:0 1px 3px #0005"></span>`;
+const escapeHtml = (v: string) =>
+  v.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 const authErrors = new Set<() => void>();
 export function onGoogleMapAuthError(callback: () => void) {
   authErrors.add(callback);
@@ -51,16 +72,26 @@ export function onGoogleMapAuthError(callback: () => void) {
   };
 }
 
-/** One browser renderer shared by the website and React Native web preview. */
+/** One browser renderer shared by the website and React Native web preview.
+ * `home` is the overview area: all of India live, Katpadi for the demo. */
 export function createGoogleMap(
   host: HTMLElement,
   callbacks: GoogleMapCallbacks,
   interactive = true,
   mapId = "DEMO_MAP_ID",
+  home: {
+    south: number;
+    west: number;
+    north: number;
+    east: number;
+  } = INDIA_BOUNDS,
 ) {
   const map = new google.maps.Map(host, {
-    center: { lat: KATPADI_CENTER.lat, lng: KATPADI_CENTER.lon },
-    zoom: 13,
+    center: {
+      lat: (home.south + home.north) / 2,
+      lng: (home.west + home.east) / 2,
+    },
+    zoom: 5,
     mapId,
     mapTypeControl: false,
     streetViewControl: false,
@@ -70,7 +101,7 @@ export function createGoogleMap(
     zoomControl: interactive,
     keyboardShortcuts: interactive,
   });
-  const overview = () => map.fitBounds(KATPADI_BOUNDS, 24);
+  const overview = () => map.fitBounds(home, 24);
   overview();
   const route = new google.maps.Polyline({
     map,
@@ -78,12 +109,17 @@ export function createGoogleMap(
     strokeWeight: 6,
     strokeOpacity: 1,
     clickable: false,
+    zIndex: 2,
   });
+  const roadLines = new Map<string, google.maps.Polyline>();
+  const roadInfo = new google.maps.InfoWindow();
+  let previousRoads: RoadSegment[] | undefined;
   const markers = new Map<
     string,
     { marker: google.maps.marker.AdvancedMarkerElement; node: HTMLElement }
   >();
   let previousRoute: Point[] | undefined;
+  let located = false;
   const listeners = [
     map.addListener("click", (event: google.maps.MapMouseEvent) => {
       if (interactive && event.latLng)
@@ -132,7 +168,14 @@ export function createGoogleMap(
         map,
         position: { lat: point.lat, lng: point.lon },
         title,
-        zIndex: id === "rider" ? 300 : id.startsWith("hazard-") ? 100 : 200,
+        zIndex:
+          id === "rider"
+            ? 300
+            : id.startsWith("hazard-")
+              ? 100
+              : id.startsWith("bump-")
+                ? 90
+                : 200,
         content: node,
       });
       markers.set(id, { marker, node });
@@ -145,6 +188,8 @@ export function createGoogleMap(
         dot(HAZARD_COLORS[p.status] || HAZARD_COLORS.suspected, 11),
         () => callbacks.onHazard?.(p),
       );
+    for (const s of data.speedBreakers || [])
+      addMarker(`bump-${s.id}`, s, s.kind, speedBreakerIcon());
     if (data.origin)
       addMarker(
         "origin",
@@ -172,6 +217,41 @@ export function createGoogleMap(
         markers.delete(id);
       }
     });
+    if (data.roads !== previousRoads) {
+      const roads = data.roads || [];
+      const keep = new Set(roads.map((r) => r.id));
+      roadLines.forEach((line, id) => {
+        if (keep.has(id)) return;
+        google.maps.event.clearInstanceListeners(line);
+        line.setMap(null);
+        roadLines.delete(id);
+      });
+      for (const road of roads) {
+        const options = {
+          path: road.path.map((p) => ({ lat: p.lat, lng: p.lon })),
+          strokeColor: ROAD_CONDITION_COLORS[road.condition],
+          strokeOpacity: 0.8,
+          strokeWeight: road.condition === "poor" ? 6 : 5,
+          zIndex: 1,
+        };
+        const existing = roadLines.get(road.id);
+        if (existing) existing.setOptions(options);
+        else {
+          const line = new google.maps.Polyline({ map, ...options });
+          roadLines.set(road.id, line);
+        }
+        const line = roadLines.get(road.id)!;
+        google.maps.event.clearListeners(line, "click");
+        line.addListener("click", (event: google.maps.PolyMouseEvent) => {
+          roadInfo.setContent(
+            `<div style="font:13px/1.4 system-ui,sans-serif;max-width:220px"><strong>${escapeHtml(road.name)}</strong><br>${road.condition === "poor" ? "Bad road" : "Rough road"} · ${escapeHtml(road.reasons.join(", "))}</div>`,
+          );
+          roadInfo.setPosition(event.latLng);
+          roadInfo.open({ map });
+        });
+      }
+      previousRoads = data.roads;
+    }
     route.setPath(data.route.map((p) => ({ lat: p.lat, lng: p.lon })));
     if (data.route !== previousRoute && data.route.length > 1) {
       const b = new google.maps.LatLngBounds();
@@ -179,14 +259,19 @@ export function createGoogleMap(
       map.fitBounds(b, 40);
     }
     previousRoute = data.route;
+    // Zoom from the overview to the rider the first time a fix arrives.
+    if (data.position && !located && data.route.length < 2)
+      focus(data.position);
+    located ||= !!data.position;
+  }
+  function focus(point: Point) {
+    map.panTo({ lat: point.lat, lng: point.lon });
+    map.setZoom(Math.max(map.getZoom() || 0, 16));
   }
   return {
     update,
     overview,
-    focus(point: Point) {
-      map.panTo({ lat: point.lat, lng: point.lon });
-      map.setZoom(Math.max(map.getZoom() || 0, 16));
-    },
+    focus,
     destroy() {
       listeners.forEach((listener) => listener.remove());
       markers.forEach(({ marker }) => {
@@ -194,6 +279,12 @@ export function createGoogleMap(
         marker.map = null;
       });
       markers.clear();
+      roadLines.forEach((line) => {
+        google.maps.event.clearInstanceListeners(line);
+        line.setMap(null);
+      });
+      roadLines.clear();
+      roadInfo.close();
       route.setMap(null);
       google.maps.event.clearInstanceListeners(map);
       host.replaceChildren();

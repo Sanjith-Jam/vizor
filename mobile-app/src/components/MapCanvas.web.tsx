@@ -5,9 +5,14 @@ import { importLibrary, setOptions } from "@googlemaps/js-api-loader";
 import { Ionicons } from "@expo/vector-icons";
 import {
   createGoogleMap,
-  GOOGLE_KATPADI_URL,
+  GOOGLE_INDIA_URL,
   onGoogleMapAuthError,
 } from "../../../shared/googleMapView";
+import {
+  createRoadConditionsFeed,
+  EMPTY_ROAD_CONDITIONS,
+  type Bounds,
+} from "../../../shared/roadConditions";
 import type { MapCanvasProps } from "./MapCanvas";
 import { AppText, Button } from "./ui";
 import { colors, radius } from "../theme";
@@ -23,12 +28,24 @@ export function MapCanvas(props: MapCanvasProps) {
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [view, setView] = useState<Bounds | null>(null);
+  const [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const feed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null);
+  useEffect(() => {
+    feed.current = createRoadConditionsFeed(setRoad);
+    return () => feed.current?.dispose();
+  }, []);
+  useEffect(() => {
+    feed.current?.request(view, props.potholes || []);
+  }, [view, props.potholes]);
   const mapData = () => ({
     position: latest.current.riderPosition,
     destination: latest.current.destination,
     origin: latest.current.origin,
     route: latest.current.routeCoordinates || [],
     potholes: latest.current.potholes || [],
+    speedBreakers: road.speedBreakers,
+    roads: road.roads,
   });
   useEffect(() => {
     if (!key || !host.current) return;
@@ -56,7 +73,10 @@ export function MapCanvas(props: MapCanvasProps) {
           {
             onDestination: (p) => latest.current.onDestination?.(p),
             onHazard: (p) => latest.current.onHazard?.(p),
-            onBounds: (b) => latest.current.onBounds?.(b),
+            onBounds: (b) => {
+              setView(b);
+              latest.current.onBounds?.(b);
+            },
           },
           latest.current.interactive !== false,
           process.env.EXPO_PUBLIC_GOOGLE_MAP_ID || "DEMO_MAP_ID",
@@ -88,6 +108,7 @@ export function MapCanvas(props: MapCanvasProps) {
     props.origin,
     props.routeCoordinates,
     props.potholes,
+    road,
     ready,
   ]);
   return (
@@ -106,7 +127,7 @@ export function MapCanvas(props: MapCanvasProps) {
       <div
         ref={host}
         role="region"
-        aria-label="Google Maps of Katpadi"
+        aria-label="Google Maps of India"
         style={{ position: "absolute", inset: 0 }}
       />
       {(!ready || error) && (
@@ -116,7 +137,7 @@ export function MapCanvas(props: MapCanvasProps) {
         >
           <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
             <Ionicons name="map-outline" size={23} color={colors.text} />
-            <AppText weight="bold">Google Maps · Katpadi</AppText>
+            <AppText weight="bold">Google Maps · India</AppText>
           </View>
           <AppText variant="small" color={colors.textMuted}>
             {!key
@@ -128,7 +149,7 @@ export function MapCanvas(props: MapCanvasProps) {
               label="Open Google Maps"
               compact
               variant="secondary"
-              onPress={() => void Linking.openURL(GOOGLE_KATPADI_URL)}
+              onPress={() => void Linking.openURL(GOOGLE_INDIA_URL)}
             />
           )}
           {!!error && (
