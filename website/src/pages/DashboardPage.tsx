@@ -22,7 +22,16 @@ import { RoadMap } from "../components/RoadMap";
 import {
   googleDirectionsUrl,
   HAZARD_COLORS,
+  speedBreakerIcon,
 } from "../../../shared/googleMapView";
+import {
+  createRoadConditionsFeed,
+  EMPTY_ROAD_CONDITIONS,
+  OSM_ATTRIBUTION,
+  ROAD_CONDITION_COLORS,
+  routeSpeedBreakers,
+  type Bounds,
+} from "../../../shared/roadConditions";
 import {
   queueObservation,
   syncObservations,
@@ -65,6 +74,8 @@ export function DashboardPage() {
       demo ? DEMO_POTHOLES : [],
     ),
     [selected, setSelected] = useState<Pothole | null>(null),
+    [view, setView] = useState<Bounds | null>(null),
+    [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS),
     [filter, setFilter] = useState("all"),
     [recorded, setRecorded] = useState(false),
     [pending, setPending] = useState(pendingObservations),
@@ -107,6 +118,7 @@ export function DashboardPage() {
     lastPosition = useRef<Point | null>(null),
     cancelRecording = useRef(false),
     lastBounds = useRef<any>(null),
+    roadFeed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null),
     turns = useRef<AssistantTurn[]>([]),
     warningUntil = useRef(0),
     fixAccuracy = useRef<number | null>(null);
@@ -184,6 +196,13 @@ export function DashboardPage() {
       cancelled = true;
     };
   }, [selected, demo]);
+  useEffect(() => {
+    roadFeed.current = createRoadConditionsFeed(setRoad);
+    return () => roadFeed.current?.dispose();
+  }, []);
+  useEffect(() => {
+    roadFeed.current?.request(view, potholes);
+  }, [view, potholes]);
   useEffect(() => {
     if (demo || !supabase) return;
     const update = () =>
@@ -395,6 +414,7 @@ export function DashboardPage() {
     east: number;
   }) => {
     lastBounds.current = b;
+    setView(b);
     if (!demo)
       void api<Pothole[]>("map", { bounds: b, replay: recorded })
         .then(setPotholes)
@@ -723,6 +743,15 @@ export function DashboardPage() {
                   <p>
                     {routeHazards(r.geometry, potholes).length} reported hazards
                     on route
+                    {(() => {
+                      const n = routeSpeedBreakers(
+                        r.geometry,
+                        road.speedBreakers,
+                      ).length;
+                      return n
+                        ? ` · ${n} speed breaker${n === 1 ? "" : "s"}`
+                        : "";
+                    })()}
                   </p>
                 </button>
               ))
@@ -871,6 +900,8 @@ export function DashboardPage() {
             <RoadMap
               demo={demo}
               potholes={visible}
+              speedBreakers={road.speedBreakers}
+              roads={road.roads}
               route={route?.geometry || []}
               position={position}
               destination={destination.current?.location}
@@ -907,6 +938,38 @@ export function DashboardPage() {
                     {n} {status}
                   </span>
                 ))}
+              {road.speedBreakers.length > 0 && (
+                <span>
+                  <b
+                    className="speed-breaker-key"
+                    dangerouslySetInnerHTML={{ __html: speedBreakerIcon(14) }}
+                  />
+                  {road.speedBreakers.length} speed breaker
+                  {road.speedBreakers.length === 1 ? "" : "s"}
+                </span>
+              )}
+              {(["poor", "fair"] as const)
+                .map(
+                  (c) =>
+                    [
+                      c,
+                      road.roads.filter((r) => r.condition === c).length,
+                    ] as const,
+                )
+                .filter(([, n]) => n > 0)
+                .map(([c, n]) => (
+                  <span key={c}>
+                    <i
+                      className="road-key"
+                      style={{ background: ROAD_CONDITION_COLORS[c] }}
+                    />
+                    {n} {c === "poor" ? "bad" : "rough"} road
+                    {n === 1 ? "" : "s"}
+                  </span>
+                ))}
+              {(road.speedBreakers.length > 0 || road.roads.length > 0) && (
+                <small className="map-attribution">{OSM_ATTRIBUTION}</small>
+              )}
             </div>
             {demo && (
               <div className="map-controls">

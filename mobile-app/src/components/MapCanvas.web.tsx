@@ -8,6 +8,11 @@ import {
   GOOGLE_KATPADI_URL,
   onGoogleMapAuthError,
 } from "../../../shared/googleMapView";
+import {
+  createRoadConditionsFeed,
+  EMPTY_ROAD_CONDITIONS,
+  type Bounds,
+} from "../../../shared/roadConditions";
 import type { MapCanvasProps } from "./MapCanvas";
 import { AppText, Button } from "./ui";
 import { colors, radius } from "../theme";
@@ -23,12 +28,24 @@ export function MapCanvas(props: MapCanvasProps) {
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [view, setView] = useState<Bounds | null>(null);
+  const [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const feed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null);
+  useEffect(() => {
+    feed.current = createRoadConditionsFeed(setRoad);
+    return () => feed.current?.dispose();
+  }, []);
+  useEffect(() => {
+    feed.current?.request(view, props.potholes || []);
+  }, [view, props.potholes]);
   const mapData = () => ({
     position: latest.current.riderPosition,
     destination: latest.current.destination,
     origin: latest.current.origin,
     route: latest.current.routeCoordinates || [],
     potholes: latest.current.potholes || [],
+    speedBreakers: road.speedBreakers,
+    roads: road.roads,
   });
   useEffect(() => {
     if (!key || !host.current) return;
@@ -56,7 +73,10 @@ export function MapCanvas(props: MapCanvasProps) {
           {
             onDestination: (p) => latest.current.onDestination?.(p),
             onHazard: (p) => latest.current.onHazard?.(p),
-            onBounds: (b) => latest.current.onBounds?.(b),
+            onBounds: (b) => {
+              setView(b);
+              latest.current.onBounds?.(b);
+            },
           },
           latest.current.interactive !== false,
           process.env.EXPO_PUBLIC_GOOGLE_MAP_ID || "DEMO_MAP_ID",
@@ -88,6 +108,7 @@ export function MapCanvas(props: MapCanvasProps) {
     props.origin,
     props.routeCoordinates,
     props.potholes,
+    road,
     ready,
   ]);
   return (

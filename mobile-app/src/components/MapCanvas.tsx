@@ -6,6 +6,14 @@ import { colors, radius } from "../theme";
 import type { Point, Pothole } from "../../../shared/contracts";
 import { KATPADI_CENTER } from "../../../shared/katpadi";
 import { HAZARD_COLORS } from "../../../shared/googleMapView";
+import {
+  createRoadConditionsFeed,
+  EMPTY_ROAD_CONDITIONS,
+  OSM_ATTRIBUTION,
+  ROAD_CONDITION_COLORS,
+  SPEED_BREAKER_COLOR,
+  type Bounds,
+} from "../../../shared/roadConditions";
 export interface MapCanvasProps {
   riderPosition: Point | null;
   destination: Point | null;
@@ -25,6 +33,22 @@ export interface MapCanvasProps {
   }) => void;
 }
 const coord = (p: Point) => ({ latitude: p.lat, longitude: p.lon });
+const regionBounds = (r: {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+}): Bounds => ({
+  south: r.latitude - r.latitudeDelta / 2,
+  north: r.latitude + r.latitudeDelta / 2,
+  west: r.longitude - r.longitudeDelta / 2,
+  east: r.longitude + r.longitudeDelta / 2,
+});
+const INITIAL_REGION = {
+  ...coord(KATPADI_CENTER),
+  latitudeDelta: 0.08,
+  longitudeDelta: 0.08,
+};
 export function MapCanvas({
   riderPosition,
   destination,
@@ -41,6 +65,16 @@ export function MapCanvas({
   const [ready, setReady] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [view, setView] = useState<Bounds>(() => regionBounds(INITIAL_REGION));
+  const [road, setRoad] = useState(EMPTY_ROAD_CONDITIONS);
+  const feed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null);
+  useEffect(() => {
+    feed.current = createRoadConditionsFeed(setRoad);
+    return () => feed.current?.dispose();
+  }, []);
+  useEffect(() => {
+    if (ready) feed.current?.request(view, potholes);
+  }, [ready, view, potholes]);
   // Android draws custom marker views only while tracking; stop after a
   // moment so hundreds of dots don't re-render every frame.
   const [tracks, setTracks] = useState(true);
@@ -48,7 +82,7 @@ export function MapCanvas({
     setTracks(true);
     const t = setTimeout(() => setTracks(false), 1000);
     return () => clearTimeout(t);
-  }, [potholes, origin, riderPosition, ready]);
+  }, [potholes, road, origin, riderPosition, ready]);
   const key = process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY || "";
   useEffect(() => {
     if (!key || ready) return;
@@ -74,11 +108,7 @@ export function MapCanvas({
           key={attempt}
           provider={PROVIDER_GOOGLE}
           style={StyleSheet.absoluteFill}
-          initialRegion={{
-            ...coord(KATPADI_CENTER),
-            latitudeDelta: 0.08,
-            longitudeDelta: 0.08,
-          }}
+          initialRegion={INITIAL_REGION}
           showsCompass={false}
           showsUserLocation={interactive}
           showsMyLocationButton={interactive}
@@ -99,20 +129,27 @@ export function MapCanvas({
                 lon: event.nativeEvent.coordinate.longitude,
               });
           }}
-          onRegionChangeComplete={(region) =>
-            onBounds?.({
-              south: region.latitude - region.latitudeDelta / 2,
-              north: region.latitude + region.latitudeDelta / 2,
-              west: region.longitude - region.longitudeDelta / 2,
-              east: region.longitude + region.longitudeDelta / 2,
-            })
-          }
+          onRegionChangeComplete={(region) => {
+            const bounds = regionBounds(region);
+            setView(bounds);
+            onBounds?.(bounds);
+          }}
         >
+          {road.roads.map((r) => (
+            <Polyline
+              key={r.id}
+              coordinates={r.path.map(coord)}
+              strokeColor={ROAD_CONDITION_COLORS[r.condition]}
+              strokeWidth={r.condition === "poor" ? 6 : 5}
+              zIndex={1}
+            />
+          ))}
           {routeCoordinates.length > 1 && (
             <Polyline
               coordinates={routeCoordinates.map(coord)}
               strokeColor="#2563EB"
               strokeWidth={6}
+              zIndex={2}
             />
           )}
           {potholes.map((p) => (
@@ -138,6 +175,23 @@ export function MapCanvas({
                   },
                 ]}
               />
+            </Marker>
+          ))}
+          {road.speedBreakers.map((s) => (
+            <Marker
+              key={s.id}
+              zIndex={90}
+              coordinate={coord(s)}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={tracks}
+              title={s.kind}
+              description="Mapped on OpenStreetMap"
+            >
+              <View style={styles.speedBreaker}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={styles.speedBreakerStripe} />
+                ))}
+              </View>
             </Marker>
           ))}
           {origin && (
@@ -170,6 +224,23 @@ export function MapCanvas({
           )}
         </MapView>
       ) : null}
+      {!!key && (road.speedBreakers.length > 0 || road.roads.length > 0) && (
+        <View style={styles.legend} pointerEvents="none">
+          <AppText variant="small" weight="semibold">
+            {[
+              road.speedBreakers.length &&
+                `${road.speedBreakers.length} speed breaker${road.speedBreakers.length === 1 ? "" : "s"}`,
+              road.roads.length &&
+                `${road.roads.length} rough/bad road${road.roads.length === 1 ? "" : "s"}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </AppText>
+          <AppText variant="small" color={colors.textMuted}>
+            {OSM_ATTRIBUTION}
+          </AppText>
+        </View>
+      )}
       {(!key || timedOut) && (
         <View style={styles.notice}>
           <AppText weight="bold">Google Maps · Katpadi</AppText>
@@ -222,6 +293,33 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: "#20201E",
     backgroundColor: "#FFFFFF",
+  },
+  speedBreaker: {
+    width: 18,
+    height: 10,
+    borderRadius: 3,
+    borderWidth: 1.5,
+    borderColor: "#1F1F1F",
+    backgroundColor: SPEED_BREAKER_COLOR,
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    overflow: "hidden",
+  },
+  speedBreakerStripe: {
+    width: 2.5,
+    backgroundColor: "#1F1F1F",
+    transform: [{ skewX: "-30deg" }],
+  },
+  legend: {
+    position: "absolute",
+    left: 10,
+    bottom: 10,
+    maxWidth: "80%",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    opacity: 0.94,
   },
   rider: {
     width: 18,

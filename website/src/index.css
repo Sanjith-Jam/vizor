@@ -1158,6 +1158,19 @@ svg {
   border: 1.5px solid #fff;
   box-shadow: 0 0 0 1px #0002;
 }
+.map-stat i.road-key {
+  width: 16px;
+  height: 5px;
+  border-radius: 3px;
+  border: 0;
+}
+.map-stat .speed-breaker-key {
+  display: inline-flex;
+}
+.map-stat .map-attribution {
+  font-size: 10px;
+  color: #6b7160;
+}
 .hazard-drawer {
   position: absolute;
   right: 20px;

@@ -8,6 +8,7 @@ import {
   onGoogleMapAuthError,
 } from "../../../shared/googleMapView";
 import type { Point, Pothole } from "../../../shared/contracts";
+import type { RoadSegment, SpeedBreaker } from "../../../shared/roadConditions";
 
 const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || "";
 if (key) setOptions({ key, v: "weekly", region: "IN", language: "en" });
@@ -15,6 +16,8 @@ if (key) setOptions({ key, v: "weekly", region: "IN", language: "en" });
 export function RoadMap(props: {
   demo: boolean;
   potholes: Pothole[];
+  speedBreakers?: SpeedBreaker[];
+  roads?: RoadSegment[];
   route: Point[];
   position: Point | null;
   destination?: Point | null;
@@ -90,6 +93,8 @@ export function RoadMap(props: {
     renderer.current?.update(props);
   }, [
     props.potholes,
+    props.speedBreakers,
+    props.roads,
     props.route,
     props.position,
     props.destination,

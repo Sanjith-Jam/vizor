@@ -1,5 +1,11 @@
 import type { Point, Pothole } from "./contracts";
 import { KATPADI_BOUNDS, KATPADI_CENTER } from "./katpadi";
+import {
+  ROAD_CONDITION_COLORS,
+  SPEED_BREAKER_COLOR,
+  type RoadSegment,
+  type SpeedBreaker,
+} from "./roadConditions";
 
 export const GOOGLE_KATPADI_URL =
   "https://www.google.com/maps/search/?api=1&query=Katpadi%2C+Vellore";
@@ -21,6 +27,8 @@ export type GoogleMapData = {
   destination?: Point | null;
   route: Point[];
   potholes: Pothole[];
+  speedBreakers?: SpeedBreaker[];
+  roads?: RoadSegment[];
 };
 export type GoogleMapCallbacks = {
   onDestination?: (point: Point) => void;
@@ -41,6 +49,17 @@ export const HAZARD_COLORS: Record<Pothole["status"], string> = {
 };
 const dot = (fill: string, size: number, ring = "#FFFFFF", border = 2) =>
   `<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${fill};border:${border}px solid ${ring};box-shadow:0 1px 3px #0005"></span>`;
+/** Striped bar, like a painted speed breaker; shared by the website legend. */
+export const speedBreakerIcon = (width = 18) =>
+  `<span style="display:block;width:${width}px;height:${Math.round(width * 0.55)}px;border-radius:3px;border:1.5px solid #1F1F1F;background:repeating-linear-gradient(135deg,${SPEED_BREAKER_COLOR} 0 4px,#1F1F1F 4px 7px);box-shadow:0 1px 3px #0005"></span>`;
+const escapeHtml = (v: string) =>
+  v.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
+  );
 const authErrors = new Set<() => void>();
 export function onGoogleMapAuthError(callback: () => void) {
   authErrors.add(callback);
@@ -78,7 +97,11 @@ export function createGoogleMap(
     strokeWeight: 6,
     strokeOpacity: 1,
     clickable: false,
+    zIndex: 2,
   });
+  const roadLines = new Map<string, google.maps.Polyline>();
+  const roadInfo = new google.maps.InfoWindow();
+  let previousRoads: RoadSegment[] | undefined;
   const markers = new Map<
     string,
     { marker: google.maps.marker.AdvancedMarkerElement; node: HTMLElement }
@@ -132,7 +155,14 @@ export function createGoogleMap(
         map,
         position: { lat: point.lat, lng: point.lon },
         title,
-        zIndex: id === "rider" ? 300 : id.startsWith("hazard-") ? 100 : 200,
+        zIndex:
+          id === "rider"
+            ? 300
+            : id.startsWith("hazard-")
+              ? 100
+              : id.startsWith("bump-")
+                ? 90
+                : 200,
         content: node,
       });
       markers.set(id, { marker, node });
@@ -145,6 +175,8 @@ export function createGoogleMap(
         dot(HAZARD_COLORS[p.status] || HAZARD_COLORS.suspected, 11),
         () => callbacks.onHazard?.(p),
       );
+    for (const s of data.speedBreakers || [])
+      addMarker(`bump-${s.id}`, s, s.kind, speedBreakerIcon());
     if (data.origin)
       addMarker(
         "origin",
@@ -172,6 +204,41 @@ export function createGoogleMap(
         markers.delete(id);
       }
     });
+    if (data.roads !== previousRoads) {
+      const roads = data.roads || [];
+      const keep = new Set(roads.map((r) => r.id));
+      roadLines.forEach((line, id) => {
+        if (keep.has(id)) return;
+        google.maps.event.clearInstanceListeners(line);
+        line.setMap(null);
+        roadLines.delete(id);
+      });
+      for (const road of roads) {
+        const options = {
+          path: road.path.map((p) => ({ lat: p.lat, lng: p.lon })),
+          strokeColor: ROAD_CONDITION_COLORS[road.condition],
+          strokeOpacity: 0.8,
+          strokeWeight: road.condition === "poor" ? 6 : 5,
+          zIndex: 1,
+        };
+        const existing = roadLines.get(road.id);
+        if (existing) existing.setOptions(options);
+        else {
+          const line = new google.maps.Polyline({ map, ...options });
+          roadLines.set(road.id, line);
+        }
+        const line = roadLines.get(road.id)!;
+        google.maps.event.clearListeners(line, "click");
+        line.addListener("click", (event: google.maps.PolyMouseEvent) => {
+          roadInfo.setContent(
+            `<div style="font:13px/1.4 system-ui,sans-serif;max-width:220px"><strong>${escapeHtml(road.name)}</strong><br>${road.condition === "poor" ? "Bad road" : "Rough road"} · ${escapeHtml(road.reasons.join(", "))}</div>`,
+          );
+          roadInfo.setPosition(event.latLng);
+          roadInfo.open({ map });
+        });
+      }
+      previousRoads = data.roads;
+    }
     route.setPath(data.route.map((p) => ({ lat: p.lat, lng: p.lon })));
     if (data.route !== previousRoute && data.route.length > 1) {
       const b = new google.maps.LatLngBounds();
@@ -194,6 +261,12 @@ export function createGoogleMap(
         marker.map = null;
       });
       markers.clear();
+      roadLines.forEach((line) => {
+        google.maps.event.clearInstanceListeners(line);
+        line.setMap(null);
+      });
+      roadLines.clear();
+      roadInfo.close();
       route.setMap(null);
       google.maps.event.clearInstanceListeners(map);
       host.replaceChildren();
