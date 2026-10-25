@@ -7,10 +7,11 @@ import type { Point, Pothole } from "../../../shared/contracts";
 import { INDIA_CENTER } from "../../../shared/india";
 import { GOOGLE_INDIA_URL, HAZARD_COLORS } from "../../../shared/googleMapView";
 import {
-  createRoadConditionsFeed,
   EMPTY_ROAD_CONDITIONS,
+  fetchRoadConditions,
   OSM_ATTRIBUTION,
   ROAD_CONDITION_COLORS,
+  roadConditionsAvailable,
   SPEED_BREAKER_COLOR,
   type Bounds,
   type RoadConditions,
@@ -48,6 +49,17 @@ const regionBounds = (r: {
   west: r.longitude - r.longitudeDelta / 2,
   east: r.longitude + r.longitudeDelta / 2,
 });
+// Mapped speed breakers are sparse, so load at least ~11 km around the view:
+// a street-level zoom (~1 km across) would otherwise rarely contain any.
+const MIN_ROAD_AREA_DEG = 0.1;
+const roadArea = (b: Bounds): Bounds => {
+  const lat = (b.south + b.north) / 2,
+    lon = (b.west + b.east) / 2,
+    h = Math.max(b.north - b.south, MIN_ROAD_AREA_DEG) / 2,
+    w = Math.max(b.east - b.west, MIN_ROAD_AREA_DEG) / 2;
+  return { south: lat - h, north: lat + h, west: lon - w, east: lon + w };
+};
+type RoadStatus = "zoom" | "loading" | "ready" | "failed";
 // All of India until the rider's location or a route moves the camera.
 const INITIAL_REGION = {
   ...coord(INDIA_CENTER),
@@ -77,14 +89,51 @@ export function MapCanvas({
     () => (extraRoad ? mergeRoadConditions(viewRoad, extraRoad) : viewRoad),
     [viewRoad, extraRoad],
   );
-  const feed = useRef<ReturnType<typeof createRoadConditionsFeed> | null>(null);
+  const [roadStatus, setRoadStatus] = useState<RoadStatus>("zoom");
   useEffect(() => {
-    feed.current = createRoadConditionsFeed(setRoad);
-    return () => feed.current?.dispose();
-  }, []);
-  useEffect(() => {
-    if (ready) feed.current?.request(view, potholes);
+    if (!ready) return;
+    if (!roadConditionsAvailable(view)) {
+      setRoadStatus("zoom");
+      return;
+    }
+    // Keep showing loaded data while a pan refreshes it.
+    setRoadStatus((s) => (s === "ready" ? s : "loading"));
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetchRoadConditions(roadArea(view), potholes, controller.signal)
+        .then((data) => {
+          setRoad(data);
+          setRoadStatus("ready");
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setRoadStatus("failed");
+        });
+    }, 700);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [ready, view, potholes]);
+  const roadCount =
+    road.speedBreakers.length + road.roads.length > 0
+      ? [
+          road.speedBreakers.length &&
+            `${road.speedBreakers.length} speed breaker${road.speedBreakers.length === 1 ? "" : "s"}`,
+          road.roads.length &&
+            `${road.roads.length} rough/bad road${road.roads.length === 1 ? "" : "s"}`,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
+  const roadMessage =
+    roadCount ??
+    {
+      zoom: "Zoom in to a city to see speed breakers and bad roads",
+      loading:
+        "Loading speed breakers and road surface… (up to 40 s the first time)",
+      failed: "Couldn't load road data. Move the map to retry.",
+      ready: "No speed breakers or bad roads mapped near here yet",
+    }[roadStatus];
   // Android draws custom marker views only while tracking; stop after a
   // moment so hundreds of dots don't re-render every frame.
   const [tracks, setTracks] = useState(true);
@@ -108,7 +157,7 @@ export function MapCanvas({
   }, [ready, routeCoordinates]);
   useEffect(() => {
     if (ready && riderPosition && routeCoordinates.length < 2)
-      ref.current?.animateCamera({ center: coord(riderPosition), zoom: 16 });
+      ref.current?.animateCamera({ center: coord(riderPosition), zoom: 15 });
   }, [ready, riderPosition?.lat, riderPosition?.lon]);
   return (
     <View style={[styles.container, style]}>
@@ -234,21 +283,16 @@ export function MapCanvas({
           )}
         </MapView>
       ) : null}
-      {!!key && (road.speedBreakers.length > 0 || road.roads.length > 0) && (
+      {!!key && ready && !timedOut && (
         <View style={styles.legend} pointerEvents="none">
           <AppText variant="small" weight="semibold">
-            {[
-              road.speedBreakers.length &&
-                `${road.speedBreakers.length} speed breaker${road.speedBreakers.length === 1 ? "" : "s"}`,
-              road.roads.length &&
-                `${road.roads.length} rough/bad road${road.roads.length === 1 ? "" : "s"}`,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+            {roadMessage}
           </AppText>
-          <AppText variant="small" color={colors.textMuted}>
-            {OSM_ATTRIBUTION}
-          </AppText>
+          {(roadCount || roadStatus === "ready") && (
+            <AppText variant="small" color={colors.textMuted}>
+              {OSM_ATTRIBUTION}
+            </AppText>
+          )}
         </View>
       )}
       {(!key || timedOut) && (
