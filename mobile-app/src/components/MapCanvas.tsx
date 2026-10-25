@@ -13,6 +13,7 @@ import {
   ROAD_CONDITION_COLORS,
   roadConditionsAvailable,
   SPEED_BREAKER_COLOR,
+  FUEL_STATION_COLOR,
   type Bounds,
   type RoadConditions,
 } from "../../../shared/roadConditions";
@@ -114,13 +115,16 @@ export function MapCanvas({
       controller.abort();
     };
   }, [ready, view, potholes]);
+  const bunks = road.fuelStations || [];
   const roadCount =
-    road.speedBreakers.length + road.roads.length > 0
+    road.speedBreakers.length + road.roads.length + bunks.length > 0
       ? [
           road.speedBreakers.length &&
             `${road.speedBreakers.length} speed breaker${road.speedBreakers.length === 1 ? "" : "s"}`,
           road.roads.length &&
             `${road.roads.length} rough/bad road${road.roads.length === 1 ? "" : "s"}`,
+          bunks.length &&
+            `${bunks.length} petrol bunk${bunks.length === 1 ? "" : "s"}`,
         ]
           .filter(Boolean)
           .join(" · ")
@@ -236,6 +240,21 @@ export function MapCanvas({
               />
             </Marker>
           ))}
+          {bunks.map((f) => (
+            <Marker
+              key={f.id}
+              zIndex={80}
+              coordinate={coord(f)}
+              anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={tracks}
+              title={f.name}
+              description="Petrol bunk · OpenStreetMap"
+            >
+              <View style={styles.fuel}>
+                <AppText style={styles.fuelText}>⛽</AppText>
+              </View>
+            </Marker>
+          ))}
           {road.speedBreakers.map((s) => (
             <Marker
               key={s.id}
@@ -345,6 +364,17 @@ const styles = StyleSheet.create({
     borderColor: "#20201E",
     backgroundColor: "#FFFFFF",
   },
+  fuel: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: "#FFFFFF",
+    backgroundColor: FUEL_STATION_COLOR,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fuelText: { fontSize: 11, lineHeight: 14 },
   speedBreaker: {
     width: 18,
     height: 10,

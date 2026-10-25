@@ -11,7 +11,11 @@ import {
 import { INDIA_BOUNDS } from "../../../shared/india";
 import { KATPADI_BOUNDS } from "../../../shared/katpadi";
 import type { Point, Pothole } from "../../../shared/contracts";
-import type { RoadSegment, SpeedBreaker } from "../../../shared/roadConditions";
+import type {
+  FuelStation,
+  RoadSegment,
+  SpeedBreaker,
+} from "../../../shared/roadConditions";
 
 const key = import.meta.env.VITE_GOOGLE_MAPS_KEY || "";
 if (key) setOptions({ key, v: "weekly", region: "IN", language: "en" });
@@ -20,6 +24,7 @@ export function RoadMap(props: {
   demo: boolean;
   potholes: Pothole[];
   speedBreakers?: SpeedBreaker[];
+  fuelStations?: FuelStation[];
   roads?: RoadSegment[];
   route: Point[];
   position: Point | null;
@@ -101,6 +106,7 @@ export function RoadMap(props: {
   }, [
     props.potholes,
     props.speedBreakers,
+    props.fuelStations,
     props.roads,
     props.route,
     props.position,

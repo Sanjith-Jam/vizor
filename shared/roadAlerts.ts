@@ -10,6 +10,7 @@ import {
   fetchRoadConditions,
   routeSpeedBreakers,
   type Bounds,
+  type FuelStation,
   type RoadCondition,
   type RoadConditions,
   type RoadSegment,
@@ -61,7 +62,9 @@ export function mergeRoadConditions(
 ): RoadConditions {
   const breakers = new Map<string, SpeedBreaker>();
   const roads = new Map<string, RoadSegment>();
+  const fuel = new Map<string, FuelStation>();
   for (const part of parts) {
+    for (const f of part.fuelStations || []) fuel.set(f.id, f);
     for (const s of part.speedBreakers)
       if (!breakers.has(s.id)) breakers.set(s.id, s);
     for (const r of part.roads) {
@@ -70,7 +73,11 @@ export function mergeRoadConditions(
         roads.set(r.id, r);
     }
   }
-  return { speedBreakers: [...breakers.values()], roads: [...roads.values()] };
+  return {
+    speedBreakers: [...breakers.values()],
+    roads: [...roads.values()],
+    fuelStations: [...fuel.values()],
+  };
 }
 
 /** The 0.2° grid cells a set of routes passes through, in route order. */

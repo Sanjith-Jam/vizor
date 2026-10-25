@@ -206,3 +206,48 @@ test("map views use fixed tiles, so GPS drift keeps the same cache keys", () => 
     t,
   );
 });
+
+test("petrol bunks come from amenity=fuel nodes and building outlines", () => {
+  const data = parseRoadConditions(
+    [
+      {
+        type: "node",
+        id: 5,
+        lat: 12.97,
+        lon: 79.15,
+        tags: { amenity: "fuel", name: "Indian Oil" },
+      },
+      {
+        type: "way",
+        id: 6,
+        tags: { amenity: "fuel", brand: "HP" },
+        geometry: [
+          { lat: 12.98, lon: 79.16 },
+          { lat: 12.981, lon: 79.161 },
+          { lat: 12.982, lon: 79.162 },
+        ],
+      },
+      {
+        type: "node",
+        id: 7,
+        lat: 12.99,
+        lon: 79.17,
+        tags: { amenity: "fuel" },
+      },
+    ],
+    [],
+  );
+  assert.deepEqual(
+    data.fuelStations?.map((f) => [f.id, f.name, f.lat]),
+    [
+      ["n5", "Indian Oil", 12.97],
+      ["w6", "HP", 12.981],
+      ["n7", "Petrol bunk", 12.99],
+    ],
+  );
+  assert.deepEqual(data.roads, []);
+  assert.match(
+    tagQuery(snapBounds({ south: 12.9, west: 79.1, north: 13, east: 79.2 })),
+    /nwr\["amenity"="fuel"\]/,
+  );
+});

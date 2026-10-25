@@ -23,6 +23,7 @@ import {
   googleDirectionsUrl,
   HAZARD_COLORS,
   speedBreakerIcon,
+  fuelStationIcon,
 } from "../../../shared/googleMapView";
 import {
   createRoadConditionsFeed,
@@ -1054,6 +1055,7 @@ export function DashboardPage() {
               demo={demo}
               potholes={visible}
               speedBreakers={combined.speedBreakers}
+              fuelStations={combined.fuelStations}
               roads={combined.roads}
               route={route?.geometry || []}
               position={position}
@@ -1095,6 +1097,16 @@ export function DashboardPage() {
                     {n} {status}
                   </span>
                 ))}
+              {(combined.fuelStations?.length ?? 0) > 0 && (
+                <span>
+                  <b
+                    className="speed-breaker-key"
+                    dangerouslySetInnerHTML={{ __html: fuelStationIcon(14) }}
+                  />
+                  {combined.fuelStations!.length} petrol bunk
+                  {combined.fuelStations!.length === 1 ? "" : "s"}
+                </span>
+              )}
               {combined.speedBreakers.length > 0 && (
                 <span>
                   <b

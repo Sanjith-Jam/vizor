@@ -3,6 +3,8 @@ import { INDIA_BOUNDS } from "./india";
 import {
   ROAD_CONDITION_COLORS,
   SPEED_BREAKER_COLOR,
+  FUEL_STATION_COLOR,
+  type FuelStation,
   type RoadSegment,
   type SpeedBreaker,
 } from "./roadConditions";
@@ -31,6 +33,7 @@ export type GoogleMapData = {
   route: Point[];
   potholes: Pothole[];
   speedBreakers?: SpeedBreaker[];
+  fuelStations?: FuelStation[];
   roads?: RoadSegment[];
 };
 export type GoogleMapCallbacks = {
@@ -56,6 +59,9 @@ const dot = (fill: string, size: number, ring = "#FFFFFF", border = 2) =>
 /** Striped bar, like a painted speed breaker; shared by the website legend. */
 export const speedBreakerIcon = (width = 18, rider = false) =>
   `<span style="display:block;width:${width}px;height:${Math.round(width * 0.55)}px;border-radius:3px;border:1.5px solid ${rider ? "#1A73E8" : "#1F1F1F"};background:repeating-linear-gradient(135deg,${SPEED_BREAKER_COLOR} 0 4px,#1F1F1F 4px 7px);box-shadow:0 1px 3px #0005"></span>`;
+/** Petrol bunk marker; shared by the website legend. */
+export const fuelStationIcon = (size = 20) =>
+  `<span style="display:grid;place-items:center;width:${size}px;height:${size}px;border-radius:5px;background:${FUEL_STATION_COLOR};border:1.5px solid #fff;box-shadow:0 1px 3px #0005"><svg width="${Math.round(size * 0.6)}" height="${Math.round(size * 0.6)}" viewBox="0 0 24 24" fill="#fff"><path d="M4 3h9v18H4zM6 5v5h5V5zM14 8h2l3 3v7a1 1 0 0 1-2 0v-4h-3v-2h2a1 1 0 0 1 1 1v-4l-3-3z"/></svg></span>`;
 const escapeHtml = (v: string) =>
   v.replace(
     /[&<>"']/g,
@@ -177,7 +183,9 @@ export function createGoogleMap(
               ? 100
               : id.startsWith("bump-")
                 ? 90
-                : 200,
+                : id.startsWith("fuel-")
+                  ? 80
+                  : 200,
         content: node,
       });
       markers.set(id, { marker, node });
@@ -190,6 +198,8 @@ export function createGoogleMap(
         dot(HAZARD_COLORS[p.status] || HAZARD_COLORS.suspected, 11),
         () => callbacks.onHazard?.(p),
       );
+    for (const f of data.fuelStations || [])
+      addMarker(`fuel-${f.id}`, f, f.name, fuelStationIcon());
     for (const s of data.speedBreakers || [])
       addMarker(
         `bump-${s.id}`,

@@ -31,10 +31,14 @@ export type RoadSegment = {
   condition: RoadCondition;
   reasons: string[];
 };
+/** A petrol bunk mapped on OpenStreetMap (`amenity=fuel`). */
+export type FuelStation = Point & { id: string; name: string };
 export type RoadConditions = {
   speedBreakers: SpeedBreaker[];
   roads: RoadSegment[];
+  fuelStations?: FuelStation[];
 };
+export const FUEL_STATION_COLOR = "#0F766E";
 export const EMPTY_ROAD_CONDITIONS: RoadConditions = {
   speedBreakers: [],
   roads: [],
@@ -122,7 +126,7 @@ export const OVERPASS_ENDPOINTS = [
 ];
 
 type OsmElement = {
-  type: "node" | "way";
+  type: "node" | "way" | "relation";
   id: number;
   lat?: number;
   lon?: number;
@@ -173,6 +177,7 @@ export function tagQuery(bounds: Bounds): string {
     `${road}["traffic_calming"~"${calming}"](${box});` +
     `${road}["smoothness"~"${smooth}"](${box});` +
     `${road}["surface"~"${rough}"](${box});` +
+    `nwr["amenity"="fuel"](${box});` +
     `);out tags geom;`
   );
 }
@@ -238,8 +243,26 @@ export function parseRoadConditions(
 ): RoadConditions {
   const speedBreakers = new Map<string, SpeedBreaker>();
   const roads = new Map<string, RoadSegment>();
+  const fuelStations = new Map<string, FuelStation>();
   for (const e of elements) {
     const tags = e.tags || {};
+    if (tags.amenity === "fuel") {
+      // Ways and relations come with outline geometry; use its middle point.
+      const at =
+        Number.isFinite(e.lat) && Number.isFinite(e.lon)
+          ? { lat: e.lat!, lon: e.lon! }
+          : e.geometry?.[Math.floor(e.geometry.length / 2)];
+      if (at && Number.isFinite(at.lat) && Number.isFinite(at.lon)) {
+        const id = `${e.type[0]}${e.id}`;
+        fuelStations.set(id, {
+          id,
+          lat: at.lat,
+          lon: at.lon,
+          name: tags.name || tags.brand || tags.operator || "Petrol bunk",
+        });
+      }
+      continue;
+    }
     const kind = SPEED_BREAKER_KINDS[tags.traffic_calming];
     if (
       e.type === "node" &&
@@ -274,6 +297,7 @@ export function parseRoadConditions(
   return {
     speedBreakers: [...speedBreakers.values()],
     roads: [...roads.values()],
+    fuelStations: [...fuelStations.values()],
   };
 }
 
@@ -429,6 +453,7 @@ export async function fetchAreaConditions(
   const total = queue.length;
   const breakers = new Map<string, SpeedBreaker>();
   const roads = new Map<string, RoadSegment>();
+  const fuel = new Map<string, FuelStation>();
   let failed = 0;
   const worker = async () => {
     for (let tile = queue.shift(); tile; tile = queue.shift()) {
@@ -442,6 +467,7 @@ export async function fetchAreaConditions(
         const data = await fetchRoadConditions(inset, potholes, signal);
         for (const s of data.speedBreakers) breakers.set(s.id, s);
         for (const r of data.roads) roads.set(r.id, r);
+        for (const f of data.fuelStations || []) fuel.set(f.id, f);
       } catch {
         failed++;
       }
@@ -450,7 +476,11 @@ export async function fetchAreaConditions(
   await Promise.all([worker(), worker(), worker()]);
   if (signal?.aborted) throw new Error("Road conditions request cancelled.");
   if (failed === total) throw new Error("Road data is unavailable right now.");
-  return { speedBreakers: [...breakers.values()], roads: [...roads.values()] };
+  return {
+    speedBreakers: [...breakers.values()],
+    roads: [...roads.values()],
+    fuelStations: [...fuel.values()],
+  };
 }
 
 /** Speed breakers and rough roads for one area. Wide areas return empty. */
