@@ -1,0 +1,23 @@
+name: Mapillary coverage check
+
+# Manual only: measures Mapillary photos, pothole detections and speed-bump
+# features around Vizor's areas using the MAPILLARY_TOKEN repository secret.
+# Prints counts only.
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Mapillary coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node scripts/mapillary-check.mjs
+        env:
+          MAPILLARY_TOKEN: ${{ secrets.MAPILLARY_TOKEN }}
