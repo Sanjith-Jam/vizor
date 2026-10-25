@@ -1,7 +1,7 @@
 {
   "name": "ar-helmet-nav",
   "private": true,
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Companion app for the AI-Assisted AR Helmet Navigation System: BLE link to the ESP32-S3 HUD, incoming-call relay, crash/SOS alerts.",
   "main": "expo-router/entry",
   "scripts": {
