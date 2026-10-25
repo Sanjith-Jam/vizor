@@ -39,16 +39,22 @@ async function get(path, params) {
 console.log(
   `token looks like a client token (MLY|...): ${token.startsWith("MLY|")}, length ${token.length}, has whitespace: ${/\s/.test(token)}`,
 );
-const control = "-122.4194,37.7749,-122.4094,37.7849"; // central San Francisco
-for (const [label, init] of [
-  ["query token", null],
-  ["OAuth header", { headers: { Authorization: `OAuth ${token}` } }],
+// Mapillary forum's known-working example (Eiffel Tower) plus tiny boxes:
+// dense areas can return [] when the box is too large to serve in time.
+for (const [label, control, init] of [
+  ["Eiffel Tower, query token", "2.29,48.85,2.30,48.86", null],
+  [
+    "Eiffel Tower, OAuth header",
+    "2.29,48.85,2.30,48.86",
+    { headers: { Authorization: `OAuth ${token}` } },
+  ],
+  ["San Francisco 200 m", "-122.4194,37.7749,-122.4174,37.7769", null],
+  ["Indiranagar 200 m", "77.6402,12.9709,77.6422,12.9729", null],
 ]) {
   try {
     const url = new URL(`${API}/images`);
     url.searchParams.set("bbox", control);
-    url.searchParams.set("fields", "id,captured_at");
-    url.searchParams.set("limit", "5");
+    url.searchParams.set("fields", "id");
     if (!init) url.searchParams.set("access_token", token);
     const response = await fetch(url, {
       ...(init || {}),
