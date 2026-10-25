@@ -14,13 +14,29 @@ import { queuedCount, syncObservations, enqueueObservation } from "./queue";
 import { useHelmetConnection } from "../hooks/useHelmetConnection";
 import { HazardEventType } from "../protocol/hazardProtocol";
 import type { Point, Pothole, Telemetry } from "../../../shared/contracts";
+import {
+  setRoadDataProxy,
+  sharedSpeedBreakers,
+  type SpeedBreaker,
+} from "../../../shared/roadConditions";
+import { SHARED_SPEED_BREAKERS_KEY } from "../../../shared/roadAlerts";
 const CACHE = "vizor.road-hazards.v1";
+// Signed-in riders use the API's shared Overpass cache; failures fall back
+// to the public servers inside shared/roadConditions.
+if (cloud)
+  setRoadDataProxy((request) =>
+    cloudApi<{ elements: unknown[] }>("roadData", request).then(
+      (r) => r.elements,
+    ),
+  );
 const Context = createContext<{
   session: Session | null;
   telemetry: Telemetry | null;
   pending: number;
   error: string | null;
   hazards: Pothole[];
+  /** Speed breakers reported by Vizor riders near the last loaded area. */
+  sharedBreakers: SpeedBreaker[];
   refresh: () => Promise<void>;
   loadHazards: (p: Point) => Promise<void>;
 }>({
@@ -29,6 +45,7 @@ const Context = createContext<{
   pending: 0,
   error: null,
   hazards: [],
+  sharedBreakers: [],
   refresh: async () => {},
   loadHazards: async () => {},
 });
@@ -38,7 +55,8 @@ export function CloudProvider({ children }: { children: React.ReactNode }) {
     [telemetry, setTelemetry] = useState<Telemetry | null>(null),
     [pending, setPending] = useState(0),
     [error, setError] = useState<string | null>(null),
-    [hazards, setHazards] = useState<Pothole[]>([]);
+    [hazards, setHazards] = useState<Pothole[]>([]),
+    [sharedBreakers, setSharedBreakers] = useState<SpeedBreaker[]>([]);
   const center = useRef<Point | null>(null),
     lastFetch = useRef(0);
   const loadHazards = useCallback(async (p: Point) => {
@@ -56,6 +74,23 @@ export function CloudProvider({ children }: { children: React.ReactNode }) {
       });
       setHazards(data);
       await AsyncStorage.setItem(CACHE, JSON.stringify(data));
+      const breakers = sharedSpeedBreakers(
+        await cloudApi<
+          { id: string; lat: number; lon: number; status: string }[]
+        >("speedBreakers", {
+          bounds: {
+            south: p.lat - 0.04,
+            north: p.lat + 0.04,
+            west: p.lon - 0.04,
+            east: p.lon + 0.04,
+          },
+        }),
+      );
+      setSharedBreakers(breakers);
+      await AsyncStorage.setItem(
+        SHARED_SPEED_BREAKERS_KEY,
+        JSON.stringify(breakers),
+      );
     } catch (e) {
       setError((e as Error).message);
     }
@@ -168,6 +203,7 @@ export function CloudProvider({ children }: { children: React.ReactNode }) {
         pending,
         error,
         hazards,
+        sharedBreakers,
         refresh,
         loadHazards,
       }}

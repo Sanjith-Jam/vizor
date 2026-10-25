@@ -2,10 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pothole } from "./contracts.ts";
 import {
+  fetchRoadConditions,
   probeQuery,
   parseRoadConditions,
   rateRoad,
   routeSpeedBreakers,
+  setRoadDataProxy,
+  sharedSpeedBreakers,
   snapBounds,
   tagQuery,
 } from "./roadConditions.ts";
@@ -126,4 +129,49 @@ test("route speed breakers are those within 20 m of the line", () => {
     routeSpeedBreakers(road, breakers).map((s) => s.id),
     ["on"],
   );
+});
+
+test("rider-shared speed breakers show only once suspected or confirmed", () => {
+  const rows = [
+    { id: "a", lat: 12.97, lon: 79.14, status: "confirmed" },
+    { id: "b", lat: 12.98, lon: 79.15, status: "suspected" },
+    { id: "c", lat: 12.99, lon: 79.16, status: "candidate" },
+    { id: "d", lat: 12.99, lon: 79.17, status: "removed" },
+  ];
+  assert.deepEqual(
+    sharedSpeedBreakers(rows).map((s) => [s.id, s.kind, s.source]),
+    [
+      ["sa", "Speed breaker", "shared"],
+      ["sb", "Possible speed breaker", "shared"],
+    ],
+  );
+});
+
+test("road data goes through the API cache when a proxy is set", async () => {
+  const seen: string[] = [];
+  setRoadDataProxy(async (request) => {
+    seen.push(request.kind);
+    return [
+      {
+        type: "node",
+        id: 77,
+        lat: 20.001,
+        lon: 75.001,
+        tags: { traffic_calming: "hump" },
+      },
+    ];
+  });
+  try {
+    const data = await fetchRoadConditions(
+      { south: 20, west: 75, north: 20.01, east: 75.01 },
+      [],
+    );
+    assert.deepEqual(seen, ["tags"]);
+    assert.deepEqual(
+      data.speedBreakers.map((s) => s.id),
+      ["n77"],
+    );
+  } finally {
+    setRoadDataProxy(null);
+  }
 });

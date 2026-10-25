@@ -21,7 +21,7 @@ export type SpeedBreaker = Point & {
   id: string;
   kind: string;
   /** "rider" for speed breakers the rider marked on this device. */
-  source?: "osm" | "rider";
+  source?: "osm" | "rider" | "shared";
 };
 export type RoadCondition = "fair" | "poor";
 export type RoadSegment = {
@@ -44,6 +44,26 @@ export const ROAD_CONDITION_COLORS: Record<RoadCondition, string> = {
   poor: "#9F1239",
 };
 export const SPEED_BREAKER_COLOR = "#FACC15";
+/** Shared (server) speed breakers as map/alert entries. */
+export function sharedSpeedBreakers(
+  rows: { id: string; lat: number; lon: number; status: string }[],
+): SpeedBreaker[] {
+  return rows
+    .filter(
+      (r) =>
+        (r.status === "confirmed" || r.status === "suspected") &&
+        Number.isFinite(r.lat) &&
+        Number.isFinite(r.lon),
+    )
+    .map((r) => ({
+      id: `s${r.id}`,
+      lat: r.lat,
+      lon: r.lon,
+      kind:
+        r.status === "confirmed" ? "Speed breaker" : "Possible speed breaker",
+      source: "shared",
+    }));
+}
 export const OSM_ATTRIBUTION = "Road data © OpenStreetMap contributors";
 
 const SPEED_BREAKER_KINDS: Record<string, string> = {
@@ -358,14 +378,46 @@ export async function fetchRoadConditions(
   const bounds = snapBounds(view);
   const near = probes(bounds, potholes);
   const [tagged, probed] = await Promise.all([
-    cachedOverpass(tagQuery(bounds)),
-    near.length ? cachedOverpass(probeQuery(bounds, near)) : [],
+    cachedOverpass(tagQuery(bounds), { kind: "tags", bounds }),
+    near.length
+      ? cachedOverpass(probeQuery(bounds, near), {
+          kind: "probe",
+          bounds,
+          near,
+        })
+      : [],
   ]);
   if (signal?.aborted) throw new Error("Road conditions request cancelled.");
   return parseRoadConditions([...tagged, ...probed], potholes);
 }
 
-function cachedOverpass(query: string): Promise<OsmElement[]> {
+export type RoadDataRequest = {
+  kind: "tags" | "probe";
+  bounds: Bounds;
+  near?: Point[];
+};
+let proxy: ((request: RoadDataRequest) => Promise<unknown[]>) | null = null;
+/**
+ * Routes Overpass lookups through the Vizor API's shared cache when the rider
+ * is signed in; direct public Overpass stays the fallback.
+ */
+export function setRoadDataProxy(
+  fn: ((request: RoadDataRequest) => Promise<unknown[]>) | null,
+) {
+  proxy = fn;
+}
+async function fetchElements(query: string, request: RoadDataRequest) {
+  if (proxy)
+    try {
+      return (await proxy(request)) as OsmElement[];
+    } catch {}
+  return overpass(query);
+}
+
+function cachedOverpass(
+  query: string,
+  request: RoadDataRequest,
+): Promise<OsmElement[]> {
   let hit = cache.get(query);
   // The shared request is not tied to one caller's signal, so a view that is
   // panned away from still fills the cache for when the rider returns.
@@ -375,7 +427,7 @@ function cachedOverpass(query: string): Promise<OsmElement[]> {
       ? { at: saved.at, elements: Promise.resolve(saved.elements) }
       : {
           at: Date.now(),
-          elements: overpass(query).then((elements) => {
+          elements: fetchElements(query, request).then((elements) => {
             writeStored(query, elements);
             return elements;
           }),

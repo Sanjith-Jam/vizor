@@ -19,7 +19,7 @@ import { useRide } from "../hooks/useRide";
 import { useSettings } from "../hooks/useSettings";
 import { useHelmetConnection } from "../hooks/useHelmetConnection";
 import { formatDistance, formatDuration, speedValue } from "../nav/geo";
-import { addMarkedBreaker, removeMarkedBreaker } from "../nav/markedBreakers";
+import { markBreakerHere, removeMarkedBreaker } from "../nav/markedBreakers";
 import { shareSpeedBreakerNote } from "../../../shared/roadAlerts";
 import { colors, fonts, radius, spacing } from "../theme";
 
@@ -53,14 +53,20 @@ export default function RideScreen() {
       Alert.alert("No location yet", "Wait for a GPS fix, then try again.");
       return;
     }
-    const mark = await addMarkedBreaker(here, ride.roadAhead.speedBreakers);
+    const { mark, shared } = await markBreakerHere(
+      here,
+      ride.roadAhead.speedBreakers,
+    );
     if (!mark) {
       Alert.alert("Already marked", "A speed breaker is already saved here.");
       return;
     }
     Alert.alert(
       "Speed breaker saved",
-      "You will be warned here on future rides. Share it as a public OpenStreetMap note so local mappers can add it for everyone?",
+      (shared
+        ? "Shared with Vizor riders; it shows for everyone once another rider confirms it. "
+        : "Saved on this phone (sharing with riders failed). ") +
+        "Also leave a public OpenStreetMap note so local mappers can add it to the map?",
       [
         { text: "Undo", onPress: () => void removeMarkedBreaker(mark.id) },
         { text: "Keep private", style: "cancel" },

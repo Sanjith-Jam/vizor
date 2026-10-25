@@ -28,6 +28,7 @@ import {
 import { plannedRide } from "../nav/osrmClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors, spacing } from "../theme";
+import { markBreakerHere } from "../nav/markedBreakers";
 export function VoiceAssistant({
   trigger,
   initialText = "",
@@ -65,6 +66,7 @@ export function VoiceAssistant({
             audio,
             mimeType: "audio/mp4",
             history: turns.current,
+            capabilities: ["mark_breaker"],
             context: {
               ...assistantContext({
                 position:
@@ -119,6 +121,21 @@ export function VoiceAssistant({
         }
       }
       if (answer.action === "cancel") ride.endRide();
+      if (answer.action === "mark_breaker") {
+        const here = ride.position || (await ride.getCurrentPosition());
+        if (!here) throw Error("Location is needed to mark a speed breaker.");
+        const { mark, shared } = await markBreakerHere(
+          here,
+          ride.roadAhead.speedBreakers,
+        );
+        setMessage(
+          !mark
+            ? "A speed breaker is already marked here."
+            : shared
+              ? "Speed breaker marked and shared with Vizor riders."
+              : "Speed breaker saved on this phone.",
+        );
+      }
       if (answer.action === "mute") update({ voicePrompts: false });
       if (answer.action === "unmute") update({ voicePrompts: true });
       if (answer.action === "repeat") {

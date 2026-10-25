@@ -52,7 +52,7 @@ export default function NavigateScreen() {
     at?: string;
   }>();
   const ride = useRide();
-  const { hazards, loadHazards } = useCloud();
+  const { hazards, loadHazards, sharedBreakers } = useCloud();
   const [destination, setDestination] = useState<Place | null>(null),
     [routes, setRoutes] = useState<Route[]>([]),
     [selected, setSelected] = useState(0),
@@ -78,10 +78,10 @@ export default function NavigateScreen() {
   const extraRoad = React.useMemo(
     () =>
       mergeRoadConditions(routeRoad.data || { speedBreakers: [], roads: [] }, {
-        speedBreakers: marked,
+        speedBreakers: [...marked, ...sharedBreakers],
         roads: [],
       }),
-    [routeRoad.data, marked],
+    [routeRoad.data, marked, sharedBreakers],
   );
   const reports = React.useMemo(
     () =>

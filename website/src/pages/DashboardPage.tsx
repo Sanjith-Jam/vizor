@@ -30,6 +30,8 @@ import {
   OSM_ATTRIBUTION,
   ROAD_CONDITION_COLORS,
   roadConditionsAvailable,
+  setRoadDataProxy,
+  sharedSpeedBreakers,
   type Bounds,
   type RoadConditions,
   type SpeedBreaker,
@@ -100,6 +102,7 @@ export function DashboardPage() {
       }
     }),
     [routeRoadFailed, setRouteRoadFailed] = useState(false),
+    [shared, setShared] = useState<SpeedBreaker[]>([]),
     [breakerNote, setBreakerNote] = useState<SpeedBreaker | null>(null),
     [sharedNote, setSharedNote] = useState(""),
     [filter, setFilter] = useState("all"),
@@ -187,10 +190,10 @@ export function DashboardPage() {
   const combined = useMemo(
       () =>
         mergeRoadConditions(road, routeRoad || EMPTY_ROAD_CONDITIONS, {
-          speedBreakers: marked,
+          speedBreakers: [...marked, ...shared],
           roads: [],
         }),
-      [road, routeRoad, marked],
+      [road, routeRoad, marked, shared],
     ),
     roadData = useMemo(() => ({ ...combined, potholes }), [combined, potholes]);
   const reports = useMemo(
@@ -239,6 +242,23 @@ export function DashboardPage() {
       cancelled = true;
     };
   }, [selected, demo]);
+  useEffect(() => {
+    // Signed-in riders share the API's Overpass cache; demo goes direct.
+    if (demo || !supabase) return;
+    setRoadDataProxy((request) =>
+      api<{ elements: unknown[] }>("roadData", request).then((r) => r.elements),
+    );
+    return () => setRoadDataProxy(null);
+  }, [demo]);
+  const loadShared = (b: Bounds | null) => {
+    if (demo || !b || !reportsAvailable(b)) return;
+    void api<{ id: string; lat: number; lon: number; status: string }[]>(
+      "speedBreakers",
+      { bounds: b },
+    )
+      .then((rows) => setShared(sharedSpeedBreakers(rows)))
+      .catch(() => {});
+  };
   useEffect(() => {
     roadFeed.current = createRoadConditionsFeed(setRoad);
     return () => roadFeed.current?.dispose();
@@ -466,7 +486,17 @@ export function DashboardPage() {
         return;
       }
       setMarked(next);
-      setReply("Speed breaker saved on this device. You will be warned here.");
+      try {
+        await api("speedBreaker", { location: here, verdict: "mark" });
+        loadShared(lastBounds.current);
+        setReply(
+          "Speed breaker saved and shared with Vizor riders. It shows for everyone once another rider confirms it.",
+        );
+      } catch {
+        setReply(
+          "Speed breaker saved on this device. Sharing with other riders failed; try again later.",
+        );
+      }
     });
   const useMyLocation = async () => {
     const point = await getPosition();
@@ -521,6 +551,7 @@ export function DashboardPage() {
     setView(b);
     // Zoomed out over India: keep the reports already shown until the rider
     // zooms back in to an area the map service can answer.
+    loadShared(b);
     if (!demo && reportsAvailable(b))
       void api<Pothole[]>("map", { bounds: b, replay: recorded })
         .then(setPotholes)
@@ -609,6 +640,7 @@ export function DashboardPage() {
     if (answer.action === "mute") setMuted(true);
     if (answer.action === "unmute") setMuted(false);
     if (answer.action === "cancel") stop();
+    if (answer.action === "mark_breaker") await markBreakerHere();
     if (answer.action === "report") {
       if (demo) {
         setReply("Demo report preview. No live record was created.");
@@ -646,6 +678,7 @@ export function DashboardPage() {
           audio,
           mimeType,
           history: turns.current,
+          capabilities: ["mark_breaker"],
           context: assistantContext({
             position,
             origin: origin?.name,
@@ -1137,11 +1170,13 @@ export function DashboardPage() {
               <div className="map-toast" role="status">
                 <span>
                   <strong>{breakerNote.kind}</strong>
-                  {breakerNote.source !== "rider"
-                    ? " · mapped on OpenStreetMap"
-                    : demo
-                      ? " · demo preview, not saved"
-                      : " · saved on this device"}
+                  {breakerNote.source === "shared"
+                    ? " · reported by Vizor riders"
+                    : breakerNote.source !== "rider"
+                      ? " · mapped on OpenStreetMap"
+                      : demo
+                        ? " · demo preview, not saved"
+                        : " · saved on this device"}
                 </span>
                 {breakerNote.source === "rider" && !demo && (
                   <button
@@ -1166,7 +1201,26 @@ export function DashboardPage() {
                     View note ↗
                   </a>
                 )}
-                {breakerNote.source === "rider" ? (
+                {breakerNote.source === "shared" ? (
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        await api("speedBreaker", {
+                          location: breakerNote,
+                          verdict: "removed",
+                        });
+                        setBreakerNote(null);
+                        loadShared(lastBounds.current);
+                        setReply(
+                          "Thanks. It is removed once another rider agrees it is gone.",
+                        );
+                      })
+                    }
+                  >
+                    Not there
+                  </button>
+                ) : breakerNote.source === "rider" ? (
                   <button
                     onClick={() => {
                       setMarked((m) =>

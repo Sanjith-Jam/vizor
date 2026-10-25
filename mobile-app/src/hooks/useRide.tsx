@@ -121,8 +121,12 @@ export function RideProvider({ children }: { children: React.ReactNode }) {
   const [routeRoad, setRouteRoad] = useState(EMPTY_ROAD_CONDITIONS);
   const marked = useMarkedBreakers();
   const roadAhead = React.useMemo(
-    () => mergeRoadConditions(routeRoad, { speedBreakers: marked, roads: [] }),
-    [routeRoad, marked],
+    () =>
+      mergeRoadConditions(routeRoad, {
+        speedBreakers: [...marked, ...road.sharedBreakers],
+        roads: [],
+      }),
+    [routeRoad, marked, road.sharedBreakers],
   );
   const roadAheadRef = useRef(roadAhead);
   roadAheadRef.current = roadAhead;

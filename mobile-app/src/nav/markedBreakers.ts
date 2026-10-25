@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { cloudApi } from "../cloud/client";
 import type { Point } from "../../../shared/contracts";
 import type { SpeedBreaker } from "../../../shared/roadConditions";
 import {
@@ -44,6 +45,21 @@ export async function addMarkedBreaker(
   if (next === marked) return null;
   publish(next, true);
   return next[next.length - 1];
+}
+
+/** Saves a mark on this phone and shares it with Vizor riders. */
+export async function markBreakerHere(
+  at: Point,
+  known: SpeedBreaker[],
+): Promise<{ mark: SpeedBreaker | null; shared: boolean }> {
+  const mark = await addMarkedBreaker(at, known);
+  if (!mark) return { mark, shared: false };
+  try {
+    await cloudApi("speedBreaker", { location: at, verdict: "mark" });
+    return { mark, shared: true };
+  } catch {
+    return { mark, shared: false };
+  }
 }
 
 export async function removeMarkedBreaker(id: string): Promise<void> {

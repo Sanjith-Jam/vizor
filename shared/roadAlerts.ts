@@ -398,6 +398,7 @@ export function parseMarkedSpeedBreakers(raw: string | null): SpeedBreaker[] {
 
 export const MARKED_SPEED_BREAKERS_KEY = "vizor.marked-speed-breakers.v1";
 export const ROUTE_ROAD_KEY = "vizor.route-road.v1";
+export const SHARED_SPEED_BREAKERS_KEY = "vizor.shared-speed-breakers.v1";
 
 /** Opens the OpenStreetMap editor at a point so riders can map it properly. */
 export const osmEditUrl = (p: Point) =>

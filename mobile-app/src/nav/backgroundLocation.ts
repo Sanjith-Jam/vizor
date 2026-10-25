@@ -13,6 +13,7 @@ import type { RoadConditions } from "../../../shared/roadConditions";
 import {
   MARKED_SPEED_BREAKERS_KEY,
   parseMarkedSpeedBreakers,
+  SHARED_SPEED_BREAKERS_KEY,
   ROUTE_ROAD_KEY,
   upcomingRoadAlerts,
   type RoadAlertKind,
@@ -170,9 +171,14 @@ async function processDetached(loc: Location.LocationObject) {
         ...JSON.parse((await AsyncStorage.getItem(ROUTE_ROAD_KEY)) || "{}"),
       };
     } catch {}
-    const marked = parseMarkedSpeedBreakers(
-      await AsyncStorage.getItem(MARKED_SPEED_BREAKERS_KEY).catch(() => null),
-    );
+    const marked = [
+      ...parseMarkedSpeedBreakers(
+        await AsyncStorage.getItem(MARKED_SPEED_BREAKERS_KEY).catch(() => null),
+      ),
+      ...parseMarkedSpeedBreakers(
+        await AsyncStorage.getItem(SHARED_SPEED_BREAKERS_KEY).catch(() => null),
+      ),
+    ];
     const alerts = upcomingRoadAlerts(state.route.geometry, position, {
       potholes: hazards,
       speedBreakers: [...road.speedBreakers, ...marked],

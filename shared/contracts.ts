@@ -190,6 +190,8 @@ export const ASSISTANT_ACTIONS = [
   "report",
   "locate",
   "start",
+  // Only returned when the client sends capabilities: ["mark_breaker"].
+  "mark_breaker",
 ] as const;
 export type AssistantReply = {
   transcript: string;
