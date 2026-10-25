@@ -34,6 +34,35 @@ async function get(path, params) {
   return JSON.parse(text);
 }
 
+// Sanity checks before the per-area counts: token shape (no value printed)
+// and a control area with known heavy coverage, by query token and by header.
+console.log(
+  `token looks like a client token (MLY|...): ${token.startsWith("MLY|")}, length ${token.length}, has whitespace: ${/\s/.test(token)}`,
+);
+const control = "-122.4194,37.7749,-122.4094,37.7849"; // central San Francisco
+for (const [label, init] of [
+  ["query token", null],
+  ["OAuth header", { headers: { Authorization: `OAuth ${token}` } }],
+]) {
+  try {
+    const url = new URL(`${API}/images`);
+    url.searchParams.set("bbox", control);
+    url.searchParams.set("fields", "id,captured_at");
+    url.searchParams.set("limit", "5");
+    if (!init) url.searchParams.set("access_token", token);
+    const response = await fetch(url, {
+      ...(init || {}),
+      signal: AbortSignal.timeout(60000),
+    });
+    const text = (await response.text()).replaceAll(token, "***");
+    console.log(
+      `control (${label}): HTTP ${response.status} ${text.slice(0, 200)}`,
+    );
+  } catch (e) {
+    console.log(`control (${label}) failed: ${e.message}`);
+  }
+}
+
 const isPothole = (v) => /pothole/i.test(v);
 const isBump = (v) => /speed.?bump|speed.?hump|bump|hump|uneven/i.test(v);
 
