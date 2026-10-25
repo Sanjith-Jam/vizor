@@ -245,8 +245,14 @@ export function DashboardPage() {
   useEffect(() => {
     // Signed-in riders share the API's Overpass cache; demo goes direct.
     if (demo || !supabase) return;
+    // The first request for an area waits on public Overpass (often 40 s+);
+    // allow longer than the default API timeout so the server cache fills.
     setRoadDataProxy((request) =>
-      api<{ elements: unknown[] }>("roadData", request).then((r) => r.elements),
+      api<{ elements: unknown[] }>(
+        "roadData",
+        request,
+        AbortSignal.timeout(100_000),
+      ).then((r) => r.elements),
     );
     return () => setRoadDataProxy(null);
   }, [demo]);

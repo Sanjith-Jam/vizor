@@ -8,7 +8,7 @@ import { INDIA_CENTER } from "../../../shared/india";
 import { GOOGLE_INDIA_URL, HAZARD_COLORS } from "../../../shared/googleMapView";
 import {
   EMPTY_ROAD_CONDITIONS,
-  fetchRoadConditions,
+  fetchAreaConditions,
   OSM_ATTRIBUTION,
   ROAD_CONDITION_COLORS,
   roadConditionsAvailable,
@@ -100,7 +100,7 @@ export function MapCanvas({
     setRoadStatus((s) => (s === "ready" ? s : "loading"));
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetchRoadConditions(roadArea(view), potholes, controller.signal)
+      fetchAreaConditions(roadArea(view), potholes, controller.signal)
         .then((data) => {
           setRoad(data);
           setRoadStatus("ready");

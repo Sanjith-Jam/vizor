@@ -16,18 +16,26 @@ import { HazardEventType } from "../protocol/hazardProtocol";
 import type { Point, Pothole, Telemetry } from "../../../shared/contracts";
 import {
   setRoadDataProxy,
+  setRoadDataStore,
   sharedSpeedBreakers,
   type SpeedBreaker,
 } from "../../../shared/roadConditions";
 import { SHARED_SPEED_BREAKERS_KEY } from "../../../shared/roadAlerts";
+import { fileRoadDataStore } from "../nav/roadDataStore";
 const CACHE = "vizor.road-hazards.v1";
 // Signed-in riders use the API's shared Overpass cache; failures fall back
-// to the public servers inside shared/roadConditions.
+// to the public servers inside shared/roadConditions. The first request for
+// an area waits on public Overpass (often 40 s+), so allow longer than the
+// default API timeout instead of falling back and leaving the cache empty.
+const ROAD_DATA_TIMEOUT_MS = 100_000;
+setRoadDataStore(fileRoadDataStore);
 if (cloud)
   setRoadDataProxy((request) =>
-    cloudApi<{ elements: unknown[] }>("roadData", request).then(
-      (r) => r.elements,
-    ),
+    cloudApi<{ elements: unknown[] }>(
+      "roadData",
+      request,
+      AbortSignal.timeout(ROAD_DATA_TIMEOUT_MS),
+    ).then((r) => r.elements),
   );
 const Context = createContext<{
   session: Session | null;

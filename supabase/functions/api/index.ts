@@ -474,32 +474,47 @@ Deno.serve(async (request: Request) => {
         Date.now() - Date.parse(cached.data.fetched_at) < ROAD_DATA_TTL_MS
       )
         return reply({ elements: cached.data.elements, cached: true });
-      let elements: unknown[] | null = null;
-      for (const endpoint of OVERPASS_ENDPOINTS) {
-        try {
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              "User-Agent": "Vizor/1.6 (road conditions server cache)",
-            },
-            body: `data=${encodeURIComponent(query)}`,
-            signal: AbortSignal.timeout(45000),
-          });
-          const json = await response.json();
-          if (response.ok && Array.isArray(json.elements)) {
-            elements = json.elements;
-            break;
-          }
-        } catch {}
-      }
+      const fetched = (async () => {
+        for (const endpoint of OVERPASS_ENDPOINTS) {
+          try {
+            const response = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "Vizor/1.6 (road conditions server cache)",
+              },
+              body: `data=${encodeURIComponent(query)}`,
+              signal: AbortSignal.timeout(45000),
+            });
+            const json = await response.json();
+            if (response.ok && Array.isArray(json.elements))
+              return json.elements as unknown[];
+          } catch {}
+        }
+        return null;
+      })();
+      // Public Overpass can take longer than a client waits. Keeping the fetch
+      // and the cache write alive past a dropped request means the next rider
+      // in this area gets the cached copy instead of starting over.
+      const stored = fetched
+        .then((result) =>
+          result
+            ? rpc("store_osm_cache", { cache_key: key, payload: result })
+            : null,
+        )
+        .catch(() => null);
+      (
+        globalThis as {
+          EdgeRuntime?: { waitUntil(task: Promise<unknown>): void };
+        }
+      ).EdgeRuntime?.waitUntil(stored);
+      const elements = await fetched;
       if (!elements) {
         // A stale copy beats nothing when every public mirror is down.
         if (cached.data)
           return reply({ elements: cached.data.elements, cached: true });
         return reply({ error: "Road data is unavailable right now." }, 503);
       }
-      await rpc("store_osm_cache", { cache_key: key, payload: elements });
       return reply({ elements, cached: false });
     }
     if (action === "map") {

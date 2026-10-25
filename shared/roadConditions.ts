@@ -335,6 +335,32 @@ function writeStored(query: string, elements: OsmElement[]) {
   }
 }
 
+/** Optional async persistence, for clients without localStorage (the
+ * Android app saves files), so an area loaded once stays fast for 12 hours
+ * even when the shared server cache is unavailable. */
+export type RoadDataStore = {
+  read(key: string): Promise<string | null>;
+  write(key: string, value: string): Promise<void>;
+};
+let asyncStore: RoadDataStore | null = null;
+export function setRoadDataStore(next: RoadDataStore | null) {
+  asyncStore = next;
+}
+async function readAsyncStored(query: string) {
+  try {
+    const saved = JSON.parse(
+      (await asyncStore?.read(storeKey(query))) || "null",
+    );
+    if (
+      saved &&
+      Date.now() - saved.at < CACHE_MS &&
+      Array.isArray(saved.elements)
+    )
+      return saved as { at: number; elements: OsmElement[] };
+  } catch {}
+  return null;
+}
+
 async function overpass(query: string) {
   const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
@@ -368,7 +394,66 @@ async function overpass(query: string) {
   throw failure;
 }
 
-/** Speed breakers and rough roads for a map view. Wide views return empty. */
+// Map views are fetched as fixed tiles: a view centred on a moving rider
+// shifts with GPS drift and small pans, which would change the cache key on
+// every load. Tiles keep keys stable and shared between riders.
+const TILE_DEG = 0.1;
+// Inset so snapBounds (0.02 grid) cannot round a tile edge like 12.9 out to
+// 12.88 through floating-point error.
+const TILE_INSET = 1e-6;
+
+/** Fixed 0.1° tiles covering a view. */
+export function areaTiles(view: Bounds): Bounds[] {
+  const edge = (i: number) => +(i * TILE_DEG).toFixed(4);
+  const tiles: Bounds[] = [];
+  for (let y = Math.floor(view.south / TILE_DEG); edge(y) < view.north; y++)
+    for (let x = Math.floor(view.west / TILE_DEG); edge(x) < view.east; x++)
+      tiles.push({
+        south: edge(y),
+        north: edge(y + 1),
+        west: edge(x),
+        east: edge(x + 1),
+      });
+  return tiles;
+}
+
+/** Speed breakers and rough roads for a map view, loaded tile by tile (three
+ * at a time). Fails only when every tile fails; wide views return empty. */
+export async function fetchAreaConditions(
+  view: Bounds,
+  potholes: Pothole[],
+  signal?: AbortSignal,
+): Promise<RoadConditions> {
+  if (!roadConditionsAvailable(view)) return EMPTY_ROAD_CONDITIONS;
+  const queue = areaTiles(view);
+  const total = queue.length;
+  const breakers = new Map<string, SpeedBreaker>();
+  const roads = new Map<string, RoadSegment>();
+  let failed = 0;
+  const worker = async () => {
+    for (let tile = queue.shift(); tile; tile = queue.shift()) {
+      const inset = {
+        south: tile.south + TILE_INSET,
+        north: tile.north - TILE_INSET,
+        west: tile.west + TILE_INSET,
+        east: tile.east - TILE_INSET,
+      };
+      try {
+        const data = await fetchRoadConditions(inset, potholes, signal);
+        for (const s of data.speedBreakers) breakers.set(s.id, s);
+        for (const r of data.roads) roads.set(r.id, r);
+      } catch {
+        failed++;
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  if (signal?.aborted) throw new Error("Road conditions request cancelled.");
+  if (failed === total) throw new Error("Road data is unavailable right now.");
+  return { speedBreakers: [...breakers.values()], roads: [...roads.values()] };
+}
+
+/** Speed breakers and rough roads for one area. Wide areas return empty. */
 export async function fetchRoadConditions(
   view: Bounds,
   potholes: Pothole[],
@@ -427,10 +512,19 @@ function cachedOverpass(
       ? { at: saved.at, elements: Promise.resolve(saved.elements) }
       : {
           at: Date.now(),
-          elements: fetchElements(query, request).then((elements) => {
+          elements: (async () => {
+            const kept = await readAsyncStored(query);
+            if (kept) return kept.elements;
+            const elements = await fetchElements(query, request);
             writeStored(query, elements);
+            void asyncStore
+              ?.write(
+                storeKey(query),
+                JSON.stringify({ at: Date.now(), elements }),
+              )
+              .catch(() => undefined);
             return elements;
-          }),
+          })(),
         };
     cache.set(query, hit);
     hit.elements.catch(() => cache.delete(query));
@@ -461,7 +555,7 @@ export function createRoadConditionsFeed(
       if (!view) return;
       timer = setTimeout(() => {
         const current = (controller = new AbortController());
-        fetchRoadConditions(view, potholes, current.signal)
+        fetchAreaConditions(view, potholes, current.signal)
           .then((data) => {
             if (!current.signal.aborted) onData(data);
           })

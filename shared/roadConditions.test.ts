@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pothole } from "./contracts.ts";
 import {
+  areaTiles,
   fetchRoadConditions,
   probeQuery,
   parseRoadConditions,
@@ -174,4 +175,34 @@ test("road data goes through the API cache when a proxy is set", async () => {
   } finally {
     setRoadDataProxy(null);
   }
+});
+
+test("map views use fixed tiles, so GPS drift keeps the same cache keys", () => {
+  const around = (lat: number, lon: number) => ({
+    south: lat - 0.05,
+    north: lat + 0.05,
+    west: lon - 0.05,
+    east: lon + 0.05,
+  });
+  // Two fixes ~100 m apart near VIT, on either side of a 0.02° grid line.
+  const a = areaTiles(around(12.9693, 79.1559));
+  const b = areaTiles(around(12.9702, 79.1551));
+  assert.deepEqual(a, b);
+  assert.deepEqual(a, [
+    { south: 12.9, north: 13, west: 79.1, east: 79.2 },
+    { south: 12.9, north: 13, west: 79.2, east: 79.3 },
+    { south: 13, north: 13.1, west: 79.1, east: 79.2 },
+    { south: 13, north: 13.1, west: 79.2, east: 79.3 },
+  ]);
+  // A slightly inset tile snaps back to exactly the tile, not one grid out.
+  const t = a[0];
+  assert.deepEqual(
+    snapBounds({
+      south: t.south + 1e-6,
+      north: t.north - 1e-6,
+      west: t.west + 1e-6,
+      east: t.east - 1e-6,
+    }),
+    t,
+  );
 });
